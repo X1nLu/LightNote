@@ -105,6 +105,12 @@ npm run tauri build
 - `msi/`：MSI 安装包，适合企业部署和静默安装。
 - `nsis/`：NSIS 安装程序，适合普通用户分发。
 
+当前版本的具体产物路径为：
+
+- `src-tauri/target/release/bundle/msi/LightNote_0.1.0_x64_en-US.msi`
+- `src-tauri/target/release/bundle/nsis/LightNote_0.1.0_x64-setup.exe`
+- `src-tauri/target/release/hello_cargo.exe`：未打包的 Windows 可执行文件。
+
 发布前建议使用代码签名证书签名 `.msi` 或安装程序，以减少 Windows SmartScreen 警告。可使用 Windows SDK 自带的 `signtool`，或在 CI 中配置签名步骤。
 
 ### macOS
