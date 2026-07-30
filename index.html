@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>XL Markdown</title>
+    <title>LightNote - 轻笺</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
 
@@ -12,17 +12,15 @@
     <main class="app-shell">
       <header class="topbar">
         <div class="brand">
-          <h1>XL Markdown</h1>
-          <p>CodeMirror 6 + KaTeX + Mermaid + SQLite</p>
+          <h1>LightNote</h1>
+          <p>轻笺：轻量、离线优先的 Markdown 编辑器</p>
         </div>
         <div class="actions">
           <button id="open-file-btn" type="button">打开文件</button>
           <button id="view-toggle-btn" type="button">分栏预览</button>
-          <button id="edit-toggle-btn" type="button">编辑</button>
           <div class="menu-wrap">
             <button id="more-btn" class="more-btn" type="button" aria-expanded="false" aria-label="更多操作">更多</button>
             <div id="more-menu" class="more-menu" hidden>
-              <button id="import-md-btn" type="button">导入 MD</button>
               <button id="export-md-btn" type="button">导出 MD</button>
               <button id="export-html-btn" type="button">导出 HTML</button>
               <button id="export-pdf-btn" type="button">打印到 PDF</button>
@@ -35,7 +33,6 @@
         <article class="panel editor-panel">
           <h2>编辑</h2>
           <div id="editor"></div>
-          <div id="single-preview" class="markdown-body single-preview" tabindex="0"></div>
         </article>
 
         <article class="panel preview-panel">

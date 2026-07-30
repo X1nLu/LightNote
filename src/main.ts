@@ -5,28 +5,38 @@ import MarkdownIt from "markdown-it";
 import markdownItKatex from "markdown-it-katex";
 import DOMPurify from "dompurify";
 import { basicSetup } from "codemirror";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
+import { Table } from "@lezer/markdown";
+import {
+  blockMathField,
+  codeBlockField,
+  collapseOnSelectionFacet,
+  editorTheme,
+  livePreviewPlugin,
+  markdownStylePlugin,
+  mathPlugin,
+  mouseSelectingField,
+  setMouseSelecting,
+  tableField,
+} from "codemirror-live-markdown";
 import "katex/dist/katex.min.css";
 
 const appShellEl = document.querySelector(".app-shell") as HTMLElement;
 const statusEl = document.querySelector("#save-status") as HTMLSpanElement;
 const editorRootEl = document.querySelector("#editor") as HTMLDivElement;
 const previewEl = document.querySelector("#preview") as HTMLDivElement;
-const singlePreviewEl = document.querySelector("#single-preview") as HTMLDivElement;
 
 const viewToggleBtn = document.querySelector("#view-toggle-btn") as HTMLButtonElement;
-const editToggleBtn = document.querySelector("#edit-toggle-btn") as HTMLButtonElement;
 const openFileBtn = document.querySelector("#open-file-btn") as HTMLButtonElement;
 const moreBtn = document.querySelector("#more-btn") as HTMLButtonElement;
 const moreMenuEl = document.querySelector("#more-menu") as HTMLDivElement;
-const importBtn = document.querySelector("#import-md-btn") as HTMLButtonElement;
 const exportMdBtn = document.querySelector("#export-md-btn") as HTMLButtonElement;
 const exportHtmlBtn = document.querySelector("#export-html-btn") as HTMLButtonElement;
 const exportPdfBtn = document.querySelector("#export-pdf-btn") as HTMLButtonElement;
 
-const INITIAL_TEXT = `# XL Markdown\n\n欢迎使用你的 Tauri Markdown 编辑器。\n\n- 支持自动保存到 SQLite\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n\`\`\`mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Export PDF]\n\`\`\`\n`;
+const INITIAL_TEXT = `# LightNote\n\n欢迎使用轻笺，一个轻量、离线优先的 Markdown 编辑器。\n\n- 支持自动保存到 SQLite\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n\`\`\`mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Export PDF]\n\`\`\`\n`;
 
 const markdownRenderer = new MarkdownIt({
   html: false,
@@ -54,7 +64,7 @@ markdownRenderer.renderer.rules.fence = (
 
 let mermaidLib: typeof import("mermaid") | null = null;
 let splitMode = false;
-let singleEditing = false;
+const livePreviewCompartment = new Compartment();
 
 async function getMermaid() {
   if (mermaidLib) {
@@ -77,23 +87,10 @@ function setSplitMode(next: boolean): void {
   splitMode = next;
   appShellEl.classList.toggle("split-mode", splitMode);
   viewToggleBtn.textContent = splitMode ? "切回单栏" : "左右分栏";
-  editToggleBtn.hidden = splitMode;
-  if (splitMode) {
-    appShellEl.classList.add("single-editing");
-  } else {
-    setSingleEditing(singleEditing);
-  }
-}
-
-function setSingleEditing(next: boolean): void {
-  singleEditing = next;
-  if (splitMode) {
-    return;
-  }
-  appShellEl.classList.toggle("single-editing", singleEditing);
-  editToggleBtn.textContent = singleEditing ? "完成" : "编辑";
-  if (singleEditing) {
-    window.requestAnimationFrame(() => editorView?.focus());
+  if (editorView) {
+    editorView.dispatch({
+      effects: livePreviewCompartment.reconfigure(createLivePreviewExtensions(!splitMode)),
+    });
   }
 }
 
@@ -110,6 +107,33 @@ function toggleMoreMenu(): void {
 
 function setStatus(message: string): void {
   statusEl.textContent = message;
+}
+
+function createLivePreviewExtensions(enabled: boolean) {
+  return [
+    collapseOnSelectionFacet.of(enabled),
+    mouseSelectingField,
+    livePreviewPlugin,
+    markdownStylePlugin,
+    editorTheme,
+    mathPlugin,
+    blockMathField,
+    tableField,
+    ...codeBlockField({ copyButton: true, defaultLanguage: "text" }),
+  ];
+}
+
+async function renderMermaidNodes(container: HTMLElement): Promise<void> {
+  const nodes = Array.from(container.querySelectorAll(".mermaid")) as HTMLElement[];
+  if (nodes.length === 0) {
+    return;
+  }
+  try {
+    const mermaid = await getMermaid();
+    await mermaid.default.run({ nodes, suppressErrors: true });
+  } catch {
+    // Mermaid 语法错误保留原文本即可，不阻塞编辑。
+  }
 }
 
 function getEditorContent(): string {
@@ -135,27 +159,18 @@ function queueSave(content: string): void {
   }, 450);
 }
 
+function cancelQueuedSave(): void {
+  if (saveTimer !== null) {
+    window.clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+}
+
 async function renderPreview(content: string): Promise<void> {
   const html = markdownRenderer.render(content);
   const sanitizedHtml = DOMPurify.sanitize(html);
   previewEl.innerHTML = sanitizedHtml;
-  singlePreviewEl.innerHTML = sanitizedHtml;
-
-  const mermaidNodes = [
-    ...previewEl.querySelectorAll(".mermaid"),
-    ...singlePreviewEl.querySelectorAll(".mermaid"),
-  ];
-  if (mermaidNodes.length > 0) {
-    try {
-      const mermaid = await getMermaid();
-      await mermaid.default.run({
-        nodes: mermaidNodes as HTMLElement[],
-        suppressErrors: true,
-      });
-    } catch {
-      // Mermaid 语法错误保留原文本即可，不阻塞主编辑流。
-    }
-  }
+  await renderMermaidNodes(previewEl);
 }
 
 function replaceEditorText(content: string): void {
@@ -186,10 +201,10 @@ async function handleImportMarkdown(): Promise<void> {
     }
 
     const content = await readTextFile(selected);
+    cancelQueuedSave();
     replaceEditorText(content);
     await renderPreview(content);
     await persistDocument(content);
-    setSingleEditing(false);
     setStatus(`已打开: ${selected}`);
   } catch (error) {
     setStatus(`打开文件失败: ${String(error)}`);
@@ -286,8 +301,9 @@ async function initEditor(): Promise<void> {
       doc: content,
       extensions: [
         basicSetup,
-        markdown(),
+        markdown({ extensions: [Table] }),
         EditorView.lineWrapping,
+        livePreviewCompartment.of(createLivePreviewExtensions(true)),
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) {
             return;
@@ -299,6 +315,15 @@ async function initEditor(): Promise<void> {
       ],
     }),
     parent: editorRootEl,
+  });
+
+  editorView.contentDOM.addEventListener("mousedown", () => {
+    editorView.dispatch({ effects: setMouseSelecting.of(true) });
+  });
+  document.addEventListener("mouseup", () => {
+    window.requestAnimationFrame(() => {
+      editorView.dispatch({ effects: setMouseSelecting.of(false) });
+    });
   });
 
   await renderPreview(content);
@@ -313,16 +338,8 @@ window.addEventListener("DOMContentLoaded", () => {
     setSplitMode(!splitMode);
   });
 
-  editToggleBtn.addEventListener("click", () => {
-    setSingleEditing(!singleEditing);
-  });
-
   openFileBtn.addEventListener("click", () => {
     void handleImportMarkdown();
-  });
-
-  singlePreviewEl.addEventListener("dblclick", () => {
-    setSingleEditing(true);
   });
 
   moreBtn.addEventListener("click", (event) => {
@@ -343,10 +360,6 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  importBtn.addEventListener("click", () => {
-    closeMoreMenu();
-    void handleImportMarkdown();
-  });
   exportMdBtn.addEventListener("click", () => {
     closeMoreMenu();
     void handleExportMarkdown();

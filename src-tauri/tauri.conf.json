@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "hello_cargo",
+  "productName": "LightNote",
   "version": "0.1.0",
   "identifier": "com.zxinl.hello_cargo",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "hello_cargo",
+        "title": "LightNote - 轻笺",
         "width": 800,
         "height": 600
       }
