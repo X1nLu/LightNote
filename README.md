@@ -12,6 +12,7 @@
 - 自动保存：内容保存至本地 SQLite 数据库，应用重启后恢复。
 - 文件操作：打开 `.md`、`.markdown` 和 `.txt` 文件；导出 Markdown、HTML，或打印为 PDF。
 - 离线优先：编辑与本地保存不依赖远程服务。
+- Windows 集成：安装时可选择添加右键菜单；支持文件关联后双击或右键直接用 LightNote 打开。
 
 ## 架构
 
@@ -57,6 +58,7 @@ flowchart LR
 - “更多 -> 导出 MD”：保存原始 Markdown。
 - “更多 -> 导出 HTML”：生成可独立打开的 HTML 文件。
 - “更多 -> 打印到 PDF”：使用系统打印对话框保存 PDF 或打印。
+- 资源管理器右键：安装后可在 `.md`、`.markdown`、`.txt` 文件上直接选择 “Open with LightNote”。
 
 ## 开发
 
@@ -105,11 +107,17 @@ npm run tauri build
 - `msi/`：MSI 安装包，适合企业部署和静默安装。
 - `nsis/`：NSIS 安装程序，适合普通用户分发。
 
+安装体验说明：
+
+- NSIS 安装器会在安装流程里询问是否添加 `.md`、`.markdown`、`.txt` 的右键菜单（默认“是”）。
+- MSI/NSIS 都会包含文件关联声明，安装后可通过系统“打开方式/默认应用”将这些扩展名关联到 LightNote。
+- 卸载时会自动清理 LightNote 写入的右键菜单注册表项。
+
 当前版本的具体产物路径为：
 
 - `src-tauri/target/release/bundle/msi/LightNote_0.1.0_x64_en-US.msi`
 - `src-tauri/target/release/bundle/nsis/LightNote_0.1.0_x64-setup.exe`
-- `src-tauri/target/release/hello_cargo.exe`：未打包的 Windows 可执行文件。
+- `src-tauri/target/release/lightnote.exe`：未打包的 Windows 可执行文件。
 
 发布前建议使用代码签名证书签名 `.msi` 或安装程序，以减少 Windows SmartScreen 警告。可使用 Windows SDK 自带的 `signtool`，或在 CI 中配置签名步骤。
 

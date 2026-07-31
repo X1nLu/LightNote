@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import MarkdownIt from "markdown-it";
 import markdownItKatex from "markdown-it-katex";
 import DOMPurify from "dompurify";
@@ -65,6 +66,13 @@ markdownRenderer.renderer.rules.fence = (
 let mermaidLib: typeof import("mermaid") | null = null;
 let splitMode = false;
 const livePreviewCompartment = new Compartment();
+const editableCompartment = new Compartment();
+
+interface OpenedExternalFile {
+  path: string;
+  content: string;
+  readOnly: boolean;
+}
 
 async function getMermaid() {
   if (mermaidLib) {
@@ -107,6 +115,12 @@ function toggleMoreMenu(): void {
 
 function setStatus(message: string): void {
   statusEl.textContent = message;
+}
+
+function setEditorReadOnly(readOnly: boolean): void {
+  editorView.dispatch({
+    effects: editableCompartment.reconfigure(EditorView.editable.of(!readOnly)),
+  });
 }
 
 function createLivePreviewExtensions(enabled: boolean) {
@@ -200,15 +214,54 @@ async function handleImportMarkdown(): Promise<void> {
       return;
     }
 
-    const content = await readTextFile(selected);
-    cancelQueuedSave();
-    replaceEditorText(content);
-    await renderPreview(content);
-    await persistDocument(content);
-    setStatus(`已打开: ${selected}`);
+    const opened = await invoke<OpenedExternalFile>("open_external_file", {
+      path: selected,
+    });
+    await applyOpenedExternalFile(opened);
   } catch (error) {
     setStatus(`打开文件失败: ${String(error)}`);
   }
+}
+
+async function applyOpenedExternalFile(opened: OpenedExternalFile): Promise<void> {
+  cancelQueuedSave();
+  replaceEditorText(opened.content);
+  setEditorReadOnly(opened.readOnly);
+  await renderPreview(opened.content);
+  await persistDocument(opened.content);
+  if (opened.readOnly) {
+    setStatus(`已只读打开: ${opened.path}（源文件为只读）`);
+  } else {
+    setStatus(`已打开: ${opened.path}`);
+  }
+}
+
+async function consumePendingLaunchPath(): Promise<void> {
+  try {
+    const pendingPath = await invoke<string | null>("take_pending_launch_path");
+    if (!pendingPath) {
+      return;
+    }
+    const opened = await invoke<OpenedExternalFile>("open_external_file", {
+      path: pendingPath,
+    });
+    await applyOpenedExternalFile(opened);
+  } catch (error) {
+    setStatus(`处理启动文件失败: ${String(error)}`);
+  }
+}
+
+async function listenForCliFileOpenEvent(): Promise<void> {
+  await listen<string>("open-file-from-cli", async (event) => {
+    try {
+      const opened = await invoke<OpenedExternalFile>("open_external_file", {
+        path: event.payload,
+      });
+      await applyOpenedExternalFile(opened);
+    } catch (error) {
+      setStatus(`打开右键文件失败: ${String(error)}`);
+    }
+  });
 }
 
 async function handleExportMarkdown(): Promise<void> {
@@ -304,6 +357,7 @@ async function initEditor(): Promise<void> {
         markdown({ extensions: [Table] }),
         EditorView.lineWrapping,
         livePreviewCompartment.of(createLivePreviewExtensions(true)),
+        editableCompartment.of(EditorView.editable.of(true)),
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) {
             return;
@@ -332,7 +386,11 @@ async function initEditor(): Promise<void> {
 
 window.addEventListener("DOMContentLoaded", () => {
   setSplitMode(false);
-  void initEditor();
+  void (async () => {
+    await initEditor();
+    await consumePendingLaunchPath();
+    await listenForCliFileOpenEvent();
+  })();
 
   viewToggleBtn.addEventListener("click", () => {
     setSplitMode(!splitMode);

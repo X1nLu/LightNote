@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    hello_cargo_lib::run()
+    lightnote_lib::run()
 }
