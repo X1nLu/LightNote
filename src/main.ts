@@ -8,20 +8,6 @@ import DOMPurify from "dompurify";
 import { basicSetup } from "codemirror";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table } from "@lezer/markdown";
-import {
-  blockMathField,
-  codeBlockField,
-  collapseOnSelectionFacet,
-  editorTheme,
-  livePreviewPlugin,
-  markdownStylePlugin,
-  mathPlugin,
-  mouseSelectingField,
-  setMouseSelecting,
-  tableField,
-} from "codemirror-live-markdown";
 import "katex/dist/katex.min.css";
 
 const appShellEl = document.querySelector(".app-shell") as HTMLElement;
@@ -29,7 +15,11 @@ const statusEl = document.querySelector("#save-status") as HTMLSpanElement;
 const editorRootEl = document.querySelector("#editor") as HTMLDivElement;
 const previewEl = document.querySelector("#preview") as HTMLDivElement;
 
-const viewToggleBtn = document.querySelector("#view-toggle-btn") as HTMLButtonElement;
+const displayModeBtn = document.querySelector("#display-mode-btn") as HTMLButtonElement;
+const displayModeMenuEl = document.querySelector("#display-mode-menu") as HTMLDivElement;
+const displayModeOptionBtns = Array.from(
+  document.querySelectorAll("[data-display-mode]"),
+) as HTMLButtonElement[];
 const openFileBtn = document.querySelector("#open-file-btn") as HTMLButtonElement;
 const moreBtn = document.querySelector("#more-btn") as HTMLButtonElement;
 const moreMenuEl = document.querySelector("#more-menu") as HTMLDivElement;
@@ -64,8 +54,8 @@ markdownRenderer.renderer.rules.fence = (
 };
 
 let mermaidLib: typeof import("mermaid") | null = null;
-let splitMode = false;
-const livePreviewCompartment = new Compartment();
+type DisplayMode = "editor" | "preview" | "split";
+let displayMode: DisplayMode = "editor";
 const editableCompartment = new Compartment();
 
 interface OpenedExternalFile {
@@ -91,14 +81,34 @@ async function getMermaid() {
 let editorView: EditorView;
 let saveTimer: number | null = null;
 
-function setSplitMode(next: boolean): void {
-  splitMode = next;
-  appShellEl.classList.toggle("split-mode", splitMode);
-  viewToggleBtn.textContent = splitMode ? "切回单栏" : "左右分栏";
-  if (editorView) {
-    editorView.dispatch({
-      effects: livePreviewCompartment.reconfigure(createLivePreviewExtensions(!splitMode)),
-    });
+function setDisplayMode(mode: DisplayMode): void {
+  displayMode = mode;
+  appShellEl.classList.remove("mode-editor", "mode-preview", "mode-split");
+  appShellEl.classList.add(`mode-${mode}`);
+
+  const labelMap: Record<DisplayMode, string> = {
+    editor: "显示模式（单栏编辑）",
+    preview: "显示模式（单栏预览）",
+    split: "显示模式（分栏）",
+  };
+  displayModeBtn.textContent = labelMap[mode];
+
+  for (const optionBtn of displayModeOptionBtns) {
+    optionBtn.classList.toggle("is-active", optionBtn.dataset.displayMode === mode);
+  }
+}
+
+function closeDisplayModeMenu(): void {
+  displayModeMenuEl.hidden = true;
+  displayModeBtn.setAttribute("aria-expanded", "false");
+}
+
+function toggleDisplayModeMenu(): void {
+  const nextHidden = !displayModeMenuEl.hidden;
+  displayModeMenuEl.hidden = nextHidden;
+  displayModeBtn.setAttribute("aria-expanded", String(!nextHidden));
+  if (!nextHidden) {
+    closeMoreMenu();
   }
 }
 
@@ -111,6 +121,9 @@ function toggleMoreMenu(): void {
   const nextHidden = !moreMenuEl.hidden;
   moreMenuEl.hidden = nextHidden;
   moreBtn.setAttribute("aria-expanded", String(!nextHidden));
+  if (!nextHidden) {
+    closeDisplayModeMenu();
+  }
 }
 
 function setStatus(message: string): void {
@@ -121,20 +134,6 @@ function setEditorReadOnly(readOnly: boolean): void {
   editorView.dispatch({
     effects: editableCompartment.reconfigure(EditorView.editable.of(!readOnly)),
   });
-}
-
-function createLivePreviewExtensions(enabled: boolean) {
-  return [
-    collapseOnSelectionFacet.of(enabled),
-    mouseSelectingField,
-    livePreviewPlugin,
-    markdownStylePlugin,
-    editorTheme,
-    mathPlugin,
-    blockMathField,
-    tableField,
-    ...codeBlockField({ copyButton: true, defaultLanguage: "text" }),
-  ];
 }
 
 async function renderMermaidNodes(container: HTMLElement): Promise<void> {
@@ -333,12 +332,10 @@ async function handleExportHtml(): Promise<void> {
 }
 
 function handleExportPdf(): void {
-  const previousSplitMode = splitMode;
-  setSplitMode(true);
+  const previousMode = displayMode;
+  setDisplayMode("preview");
   const restore = () => {
-    if (!previousSplitMode) {
-      setSplitMode(false);
-    }
+    setDisplayMode(previousMode);
   };
   window.addEventListener("afterprint", restore, { once: true });
   window.setTimeout(() => {
@@ -354,9 +351,7 @@ async function initEditor(): Promise<void> {
       doc: content,
       extensions: [
         basicSetup,
-        markdown({ extensions: [Table] }),
         EditorView.lineWrapping,
-        livePreviewCompartment.of(createLivePreviewExtensions(true)),
         editableCompartment.of(EditorView.editable.of(true)),
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) {
@@ -371,30 +366,30 @@ async function initEditor(): Promise<void> {
     parent: editorRootEl,
   });
 
-  editorView.contentDOM.addEventListener("mousedown", () => {
-    editorView.dispatch({ effects: setMouseSelecting.of(true) });
-  });
-  document.addEventListener("mouseup", () => {
-    window.requestAnimationFrame(() => {
-      editorView.dispatch({ effects: setMouseSelecting.of(false) });
-    });
-  });
-
   await renderPreview(content);
   setStatus("已从 SQLite 恢复文档");
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  setSplitMode(false);
+  setDisplayMode("editor");
   void (async () => {
     await initEditor();
     await consumePendingLaunchPath();
     await listenForCliFileOpenEvent();
   })();
 
-  viewToggleBtn.addEventListener("click", () => {
-    setSplitMode(!splitMode);
+  displayModeBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleDisplayModeMenu();
   });
+
+  for (const optionBtn of displayModeOptionBtns) {
+    optionBtn.addEventListener("click", () => {
+      const mode = optionBtn.dataset.displayMode as DisplayMode;
+      setDisplayMode(mode);
+      closeDisplayModeMenu();
+    });
+  }
 
   openFileBtn.addEventListener("click", () => {
     void handleImportMarkdown();
@@ -407,6 +402,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
   document.addEventListener("click", (event) => {
     const target = event.target as Node;
+    if (!displayModeMenuEl.contains(target) && !displayModeBtn.contains(target)) {
+      closeDisplayModeMenu();
+    }
     if (!moreMenuEl.contains(target) && !moreBtn.contains(target)) {
       closeMoreMenu();
     }
@@ -414,6 +412,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      closeDisplayModeMenu();
       closeMoreMenu();
     }
   });

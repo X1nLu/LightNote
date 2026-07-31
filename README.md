@@ -1,13 +1,13 @@
 # LightNote
 
-**LightNote（轻笺）** 是一个轻量、离线优先的桌面 Markdown 编辑器。它使用 Tauri 2 构建，在单栏模式提供类似 Obsidian 的 Live Preview：光标进入 Markdown 语法范围时显示源码，离开后隐藏标记并保留格式化效果。
+**LightNote（轻笺）** 是一个轻量、离线优先的桌面 Markdown 编辑器。它使用 Tauri 2 构建，单栏模式专注于源码编辑，分栏模式提供右侧实时渲染预览。
 
 ## 功能
 
-- 单栏 Live Preview：标题、粗体、斜体、列表、引用和链接等 Markdown 标记按光标位置显示或隐藏。
+- 单栏源码编辑：稳定显示完整 Markdown 源码，避免编辑态样式干扰。
 - 左右分栏：左侧完整 Markdown 源码，右侧实时预览。
 - KaTeX：支持行内数学和块级数学预览。
-- GFM 表格和代码块：单栏 Live Preview 支持表格、代码块预览；分栏预览完整渲染。
+- GFM 表格和代码块：单栏直接编辑源码，分栏预览完整渲染。
 - Mermaid：在分栏预览中异步渲染流程图；导出的 HTML 也会加载 Mermaid。
 - 自动保存：内容保存至本地 SQLite 数据库，应用重启后恢复。
 - 文件操作：打开 `.md`、`.markdown` 和 `.txt` 文件；导出 Markdown、HTML，或打印为 PDF。
@@ -19,7 +19,7 @@
 ```mermaid
 flowchart LR
 	UI[Vanilla TypeScript UI] --> CM[CodeMirror 6]
-	CM --> LP[Live Preview]
+	CM --> Source[Source Editing]
 	CM --> MD[markdown-it]
 	MD --> Preview[分栏预览]
 	UI --> Tauri[Tauri 2 Commands]
@@ -30,7 +30,7 @@ flowchart LR
 | 层 | 主要技术 | 职责 |
 | --- | --- | --- |
 | 桌面容器 | Tauri 2、Rust | 启动应用、SQLite 持久化、原生能力权限。 |
-| 编辑器 | CodeMirror 6、`codemirror-live-markdown` | Markdown 源码编辑、Obsidian 风格 Live Preview。 |
+| 编辑器 | CodeMirror 6 | Markdown 源码编辑。 |
 | 渲染 | markdown-it、KaTeX、Mermaid、DOMPurify | 预览、导出 HTML 和内容清理。 |
 | 前端 | Vite、Vanilla TypeScript | 视图切换、自动保存、文件导入导出和菜单交互。 |
 
@@ -38,7 +38,7 @@ flowchart LR
 
 ### 单栏模式
 
-默认模式。直接编辑正文：当前光标涉及的 Markdown 语法会显示，例如 `#`、`**`、`-`；光标移开后，标记会隐藏并展示格式化内容。
+通过“显示模式 -> 单栏编辑”进入。左侧为纯源码编辑区，始终显示完整 Markdown 文本，不进行编辑态渲染。
 
 常用输入规则：
 
@@ -50,7 +50,11 @@ flowchart LR
 
 ### 分栏模式
 
-点击“左右分栏”后，左侧显示完整 Markdown 源码，右侧实时渲染预览。再次点击“切回单栏”恢复 Live Preview。
+通过“显示模式 -> 分栏”进入。左侧继续显示 Markdown 源码，右侧实时渲染预览。
+
+### 单栏预览模式
+
+通过“显示模式 -> 单栏预览”进入，仅显示右侧预览面板，便于专注阅读。
 
 ### 文件与导出
 
@@ -180,5 +184,5 @@ LightNote 将当前文档保存到应用数据目录下的 SQLite 数据库中�
 ## 已知限制
 
 - 当前 SQLite 模型只保存一个活动文档，不提供多文档列表或历史版本。
-- Mermaid 在分栏预览和导出 HTML 中渲染；单栏 Live Preview 保持 Mermaid 围栏源码，便于编辑。
+- Mermaid 在分栏预览和导出 HTML 中渲染；单栏保持 Mermaid 围栏源码，便于编辑。
 - HTML 导出引用 KaTeX 与 Mermaid 的 CDN 资源，离线查看导出 HTML 时这些资源可能不可用。

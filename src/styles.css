@@ -113,6 +113,12 @@ body {
   width: 100%;
 }
 
+.more-menu button.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: #f2fbf9;
+}
+
 button {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -135,9 +141,17 @@ button:hover {
   min-height: 0;
 }
 
-.app-shell.split-mode .workspace {
+.app-shell.mode-split .workspace {
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr;
+}
+
+.app-shell.mode-preview .preview-panel {
+  display: grid;
+}
+
+.app-shell.mode-preview .editor-panel {
+  display: none;
 }
 
 .panel {
@@ -146,7 +160,7 @@ button:hover {
   grid-template-rows: auto 1fr;
 }
 
-.panel h2 {
+.panel > h2 {
   margin: 0;
   font-size: 0.85rem;
   letter-spacing: 0.04em;
@@ -161,7 +175,7 @@ button:hover {
   position: relative;
 }
 
-.app-shell.split-mode .editor-panel {
+.app-shell.mode-split .editor-panel {
   border-right: 1px solid var(--line);
   border-bottom: 0;
 }
@@ -195,7 +209,7 @@ button:hover {
   display: none;
 }
 
-.app-shell.split-mode .preview-panel {
+.app-shell.mode-split .preview-panel {
   display: grid;
 }
 
@@ -234,12 +248,12 @@ button:hover {
     border-bottom: 0;
   }
 
-  .app-shell.split-mode .workspace {
+  .app-shell.mode-split .workspace {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(240px, 1fr) minmax(220px, 1fr);
   }
 
-  .app-shell.split-mode .editor-panel {
+  .app-shell.mode-split .editor-panel {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
@@ -258,7 +272,7 @@ button:hover {
   .editor-panel,
   .status-bar,
   .menu-wrap,
-  #view-toggle-btn {
+  #display-mode-btn {
     display: none !important;
   }
 
