@@ -80,6 +80,7 @@ async function getMermaid() {
 
 let editorView: EditorView;
 let saveTimer: number | null = null;
+let mermaidRenderId = 0;
 
 function setDisplayMode(mode: DisplayMode): void {
   displayMode = mode;
@@ -95,6 +96,10 @@ function setDisplayMode(mode: DisplayMode): void {
 
   for (const optionBtn of displayModeOptionBtns) {
     optionBtn.classList.toggle("is-active", optionBtn.dataset.displayMode === mode);
+  }
+
+  if (mode !== "editor" && editorView) {
+    void renderPreview(getEditorContent());
   }
 }
 
@@ -143,7 +148,13 @@ async function renderMermaidNodes(container: HTMLElement): Promise<void> {
   }
   try {
     const mermaid = await getMermaid();
-    await mermaid.default.run({ nodes, suppressErrors: true });
+    for (const node of nodes) {
+      const source = node.textContent ?? "";
+      const id = `mermaid-diagram-${++mermaidRenderId}`;
+      const rendered = await mermaid.default.render(id, source);
+      node.innerHTML = rendered.svg;
+      rendered.bindFunctions?.(node);
+    }
   } catch {
     // Mermaid 语法错误保留原文本即可，不阻塞编辑。
   }
