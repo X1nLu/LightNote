@@ -74,21 +74,7 @@ body {
   position: relative;
 }
 
-.more-btn {
-  min-width: 62px;
-  padding: 7px 14px;
-  letter-spacing: 0.02em;
-  font-weight: 600;
-  border-color: #c7bea9;
-  background: linear-gradient(180deg, #fffefb 0%, #f6f0e2 100%);
-}
-
-.more-btn[aria-expanded="true"] {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.more-menu {
+.display-mode-menu {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
@@ -103,17 +89,17 @@ body {
   z-index: 20;
 }
 
-.more-menu[hidden] {
+.display-mode-menu[hidden] {
   display: none;
 }
 
-.more-menu button {
+.display-mode-menu button {
   text-align: left;
   border-radius: 8px;
   width: 100%;
 }
 
-.more-menu button.is-active {
+.display-mode-menu button.is-active {
   border-color: var(--accent);
   color: var(--accent);
   background: #f2fbf9;
