@@ -8,9 +8,9 @@
 - 左右分栏：左侧完整 Markdown 源码，右侧实时预览。
 - KaTeX：支持行内数学和块级数学预览。
 - GFM 表格和代码块：单栏直接编辑源码，分栏预览完整渲染。
-- Mermaid：在分栏预览中异步渲染流程图；导出的 HTML 也会加载 Mermaid。
+- Mermaid：在分栏预览中异步渲染流程图。
 - 自动保存：内容保存至本地 SQLite 数据库，应用重启后恢复。
-- 文件操作：打开 `.md`、`.markdown` 和 `.txt` 文件；导出 Markdown、HTML，或打印为 PDF。
+- 文件操作：打开 `.md`、`.markdown` 和 `.txt` 文件。
 - 离线优先：编辑与本地保存不依赖远程服务。
 - Windows 集成：安装时可选择添加右键菜单；支持文件关联后双击或右键直接用 LightNote 打开。
 
@@ -24,15 +24,15 @@ flowchart LR
 	MD --> Preview[分栏预览]
 	UI --> Tauri[Tauri 2 Commands]
 	Tauri --> SQLite[(SQLite)]
-	UI --> Files[Dialog / File System]
+	UI --> Files[File Dialog]
 ```
 
 | 层 | 主要技术 | 职责 |
 | --- | --- | --- |
 | 桌面容器 | Tauri 2、Rust | 启动应用、SQLite 持久化、原生能力权限。 |
 | 编辑器 | CodeMirror 6 | Markdown 源码编辑。 |
-| 渲染 | markdown-it、KaTeX、Mermaid、DOMPurify | 预览、导出 HTML 和内容清理。 |
-| 前端 | Vite、Vanilla TypeScript | 视图切换、自动保存、文件导入导出和菜单交互。 |
+| 渲染 | markdown-it、KaTeX、Mermaid、DOMPurify | 预览和内容清理。 |
+| 前端 | Vite、Vanilla TypeScript | 视图切换、自动保存、文件导入和菜单交互。 |
 
 ## 使用方法
 
@@ -56,12 +56,9 @@ flowchart LR
 
 通过“显示模式 -> 单栏预览”进入，仅显示右侧预览面板，便于专注阅读。
 
-### 文件与导出
+### 文件操作
 
 - “打开文件”：导入 `.md`、`.markdown` 或 `.txt`。
-- “更多 -> 导出 MD”：保存原始 Markdown。
-- “更多 -> 导出 HTML”：生成可独立打开的 HTML 文件。
-- “更多 -> 打印到 PDF”：使用系统打印对话框保存 PDF 或打印。
 - 资源管理器右键：安装后可在 `.md`、`.markdown`、`.txt` 文件上直接选择 “Open with LightNote”。
 
 ## 开发
@@ -171,7 +168,7 @@ cargo build --manifest-path src-tauri/Cargo.toml --release
 │   └── styles.css       # 应用与编辑器样式
 ├── src-tauri/
 │   ├── src/lib.rs       # Tauri 命令与 SQLite 初始化
-│   ├── capabilities/    # 对话框与文件系统权限
+│   ├── capabilities/    # 对话框权限
 │   └── tauri.conf.json  # 桌面应用配置
 ├── index.html           # 页面壳与操作按钮
 └── package.json         # 前端脚本与依赖
@@ -179,10 +176,9 @@ cargo build --manifest-path src-tauri/Cargo.toml --release
 
 ## 数据与隐私
 
-LightNote 将当前文档保存到应用数据目录下的 SQLite 数据库中。打开外部文件不会自动覆盖源文件；需要通过“导出 MD”明确保存为文件。请自行备份重要文档。
+LightNote 将当前文档保存到应用数据目录下的 SQLite 数据库中。打开外部文件不会自动覆盖源文件。请自行备份重要文档。
 
 ## 已知限制
 
 - 当前 SQLite 模型只保存一个活动文档，不提供多文档列表或历史版本。
-- Mermaid 在分栏预览和导出 HTML 中渲染；单栏保持 Mermaid 围栏源码，便于编辑。
-- HTML 导出引用 KaTeX 与 Mermaid 的 CDN 资源，离线查看导出 HTML 时这些资源可能不可用。
+- Mermaid 在分栏预览中渲染；单栏保持 Mermaid 围栏源码，便于编辑。

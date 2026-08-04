@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open, save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { open } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
 import markdownItKatex from "markdown-it-katex";
 import DOMPurify from "dompurify";
@@ -21,13 +20,8 @@ const displayModeOptionBtns = Array.from(
   document.querySelectorAll("[data-display-mode]"),
 ) as HTMLButtonElement[];
 const openFileBtn = document.querySelector("#open-file-btn") as HTMLButtonElement;
-const moreBtn = document.querySelector("#more-btn") as HTMLButtonElement;
-const moreMenuEl = document.querySelector("#more-menu") as HTMLDivElement;
-const exportMdBtn = document.querySelector("#export-md-btn") as HTMLButtonElement;
-const exportHtmlBtn = document.querySelector("#export-html-btn") as HTMLButtonElement;
-const exportPdfBtn = document.querySelector("#export-pdf-btn") as HTMLButtonElement;
 
-const INITIAL_TEXT = `# LightNote\n\n欢迎使用轻笺，一个轻量、离线优先的 Markdown 编辑器。\n\n- 支持自动保存到 SQLite\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n\`\`\`mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Export PDF]\n\`\`\`\n`;
+const INITIAL_TEXT = `# LightNote\n\n欢迎使用轻笺，一个轻量、离线优先的 Markdown 编辑器。\n\n- 支持自动保存到 SQLite\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n\`\`\`mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Continue Writing]\n\`\`\`\n`;
 
 const markdownRenderer = new MarkdownIt({
   html: false,
@@ -55,7 +49,6 @@ markdownRenderer.renderer.rules.fence = (
 
 let mermaidLib: typeof import("mermaid") | null = null;
 type DisplayMode = "editor" | "preview" | "split";
-let displayMode: DisplayMode = "editor";
 const editableCompartment = new Compartment();
 
 interface OpenedExternalFile {
@@ -83,7 +76,6 @@ let saveTimer: number | null = null;
 let mermaidRenderId = 0;
 
 function setDisplayMode(mode: DisplayMode): void {
-  displayMode = mode;
   appShellEl.classList.remove("mode-editor", "mode-preview", "mode-split");
   appShellEl.classList.add(`mode-${mode}`);
 
@@ -112,23 +104,6 @@ function toggleDisplayModeMenu(): void {
   const nextHidden = !displayModeMenuEl.hidden;
   displayModeMenuEl.hidden = nextHidden;
   displayModeBtn.setAttribute("aria-expanded", String(!nextHidden));
-  if (!nextHidden) {
-    closeMoreMenu();
-  }
-}
-
-function closeMoreMenu(): void {
-  moreMenuEl.hidden = true;
-  moreBtn.setAttribute("aria-expanded", "false");
-}
-
-function toggleMoreMenu(): void {
-  const nextHidden = !moreMenuEl.hidden;
-  moreMenuEl.hidden = nextHidden;
-  moreBtn.setAttribute("aria-expanded", String(!nextHidden));
-  if (!nextHidden) {
-    closeDisplayModeMenu();
-  }
 }
 
 function setStatus(message: string): void {
@@ -274,86 +249,6 @@ async function listenForCliFileOpenEvent(): Promise<void> {
   });
 }
 
-async function handleExportMarkdown(): Promise<void> {
-  const path = await save({
-    defaultPath: "note.md",
-    filters: [
-      {
-        name: "Markdown",
-        extensions: ["md"],
-      },
-    ],
-  });
-
-  if (!path) {
-    return;
-  }
-
-  await writeTextFile(path, getEditorContent());
-  setStatus(`已导出 MD: ${path}`);
-}
-
-function buildExportableHtml(content: string): string {
-  const html = markdownRenderer.render(content);
-  const sanitized = DOMPurify.sanitize(html);
-  return `<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Markdown Export</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
-    <style>
-      body { font-family: "Times New Roman", "Noto Serif SC", serif; max-width: 860px; margin: 40px auto; line-height: 1.75; padding: 0 20px; }
-      pre { background: #f3f4f6; border: 1px solid #e5e7eb; padding: 12px; overflow: auto; border-radius: 8px; }
-      code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; }
-      blockquote { border-left: 4px solid #d1d5db; margin: 0; padding-left: 12px; color: #4b5563; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border: 1px solid #d1d5db; padding: 6px 8px; }
-      .mermaid { text-align: center; }
-    </style>
-  </head>
-  <body>
-    ${sanitized}
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-    <script>
-      mermaid.initialize({ startOnLoad: true, securityLevel: "strict", theme: "neutral" });
-    </script>
-  </body>
-</html>`;
-}
-
-async function handleExportHtml(): Promise<void> {
-  const path = await save({
-    defaultPath: "note.html",
-    filters: [
-      {
-        name: "HTML",
-        extensions: ["html"],
-      },
-    ],
-  });
-
-  if (!path) {
-    return;
-  }
-
-  await writeTextFile(path, buildExportableHtml(getEditorContent()));
-  setStatus(`已导出 HTML: ${path}`);
-}
-
-function handleExportPdf(): void {
-  const previousMode = displayMode;
-  setDisplayMode("preview");
-  const restore = () => {
-    setDisplayMode(previousMode);
-  };
-  window.addEventListener("afterprint", restore, { once: true });
-  window.setTimeout(() => {
-    window.print();
-  }, 40);
-}
-
 async function initEditor(): Promise<void> {
   const content = (await invoke<string>("load_document")) || INITIAL_TEXT;
 
@@ -406,38 +301,16 @@ window.addEventListener("DOMContentLoaded", () => {
     void handleImportMarkdown();
   });
 
-  moreBtn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleMoreMenu();
-  });
-
   document.addEventListener("click", (event) => {
     const target = event.target as Node;
     if (!displayModeMenuEl.contains(target) && !displayModeBtn.contains(target)) {
       closeDisplayModeMenu();
-    }
-    if (!moreMenuEl.contains(target) && !moreBtn.contains(target)) {
-      closeMoreMenu();
     }
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeDisplayModeMenu();
-      closeMoreMenu();
     }
-  });
-
-  exportMdBtn.addEventListener("click", () => {
-    closeMoreMenu();
-    void handleExportMarkdown();
-  });
-  exportHtmlBtn.addEventListener("click", () => {
-    closeMoreMenu();
-    void handleExportHtml();
-  });
-  exportPdfBtn.addEventListener("click", () => {
-    closeMoreMenu();
-    handleExportPdf();
   });
 });
