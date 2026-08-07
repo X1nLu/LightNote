@@ -38,9 +38,9 @@ markdownRenderer.renderer.rules.fence = (
   self: any,
 ) => {
   const token = tokens[idx];
-  const info = token.info.trim();
+  const info = token.info.trim().split(/\s+/, 1)[0]?.toLowerCase();
   if (info === "mermaid") {
-    return `<div class="mermaid">${token.content}</div>`;
+    return `<div class="mermaid">${escapeHtml(normalizeMermaidSource(token.content))}</div>`;
   }
   return rawFenceRenderer
     ? rawFenceRenderer(tokens, idx, options, env, self)
@@ -55,6 +55,12 @@ interface OpenedExternalFile {
   path: string;
   content: string;
   readOnly: boolean;
+  baseDir: string;
+}
+
+interface LocalImage {
+  data: string;
+  mimeType: string;
 }
 
 async function getMermaid() {
@@ -74,6 +80,76 @@ async function getMermaid() {
 let editorView: EditorView;
 let saveTimer: number | null = null;
 let mermaidRenderId = 0;
+let previewRenderId = 0;
+let documentBaseDir: string | null = null;
+let previewObjectUrls: string[] = [];
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[character];
+  });
+}
+
+function normalizeMermaidSource(source: string): string {
+  return source.replace(/[\u00a0\u202f]/g, " ");
+}
+
+function normalizeMarkdownFences(content: string): string {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  const normalizedLines: string[] = [];
+  let openingFence: { character: string; length: number } | null = null;
+
+  for (const line of lines) {
+    const openingMatch = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (!openingFence && openingMatch) {
+      openingFence = {
+        character: openingMatch[1][0],
+        length: openingMatch[1].length,
+      };
+      normalizedLines.push(line);
+      continue;
+    }
+
+    if (!openingFence) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    const closingMatch = line.match(/^ {0,3}(`{3,}|~{3,})\s*$/);
+    if (
+      closingMatch &&
+      closingMatch[1][0] === openingFence.character &&
+      closingMatch[1].length >= openingFence.length
+    ) {
+      normalizedLines.push(line);
+      openingFence = null;
+      continue;
+    }
+
+    const appendedClosingMatch = line.match(/^(.*?)(`{3,}|~{3,})\s*$/);
+    if (
+      appendedClosingMatch &&
+      appendedClosingMatch[2][0] === openingFence.character &&
+      appendedClosingMatch[2].length >= openingFence.length
+    ) {
+      normalizedLines.push(appendedClosingMatch[1].trimEnd());
+      normalizedLines.push(appendedClosingMatch[2]);
+      openingFence = null;
+      continue;
+    }
+
+    normalizedLines.push(line);
+  }
+
+  return normalizedLines.join("\n");
+}
 
 function setDisplayMode(mode: DisplayMode): void {
   appShellEl.classList.remove("mode-editor", "mode-preview", "mode-split");
@@ -116,7 +192,7 @@ function setEditorReadOnly(readOnly: boolean): void {
   });
 }
 
-async function renderMermaidNodes(container: HTMLElement): Promise<void> {
+async function renderMermaidNodes(container: HTMLElement, renderId: number): Promise<void> {
   const nodes = Array.from(container.querySelectorAll(".mermaid")) as HTMLElement[];
   if (nodes.length === 0) {
     return;
@@ -124,11 +200,21 @@ async function renderMermaidNodes(container: HTMLElement): Promise<void> {
   try {
     const mermaid = await getMermaid();
     for (const node of nodes) {
+      if (renderId !== previewRenderId) {
+        return;
+      }
       const source = node.textContent ?? "";
       const id = `mermaid-diagram-${++mermaidRenderId}`;
-      const rendered = await mermaid.default.render(id, source);
-      node.innerHTML = rendered.svg;
-      rendered.bindFunctions?.(node);
+      try {
+        const rendered = await mermaid.default.render(id, source);
+        if (renderId !== previewRenderId) {
+          return;
+        }
+        node.innerHTML = rendered.svg;
+        rendered.bindFunctions?.(node);
+      } catch {
+        node.classList.add("mermaid-error");
+      }
     }
   } catch {
     // Mermaid 语法错误保留原文本即可，不阻塞编辑。
@@ -165,11 +251,88 @@ function cancelQueuedSave(): void {
   }
 }
 
+function revokePreviewObjectUrls(): void {
+  for (const objectUrl of previewObjectUrls) {
+    URL.revokeObjectURL(objectUrl);
+  }
+  previewObjectUrls = [];
+}
+
+function decodeBase64ToBlob(data: string, mimeType: string): Blob {
+  const binary = window.atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+function getLocalImagePath(source: string): string | null {
+  const trimmedSource = source.trim();
+  if (
+    !trimmedSource ||
+    /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(trimmedSource)
+  ) {
+    return null;
+  }
+
+  const pathWithoutQuery = trimmedSource.split(/[?#]/, 1)[0];
+  try {
+    return decodeURIComponent(pathWithoutQuery);
+  } catch {
+    return pathWithoutQuery;
+  }
+}
+
+async function loadLocalImages(
+  container: HTMLElement,
+  baseDir: string | null,
+  renderId: number,
+): Promise<void> {
+  if (!baseDir) {
+    return;
+  }
+
+  const images = Array.from(container.querySelectorAll("img")) as HTMLImageElement[];
+  await Promise.all(
+    images.map(async (image) => {
+      const source = image.getAttribute("src");
+      const imagePath = source ? getLocalImagePath(source) : null;
+      if (!imagePath) {
+        return;
+      }
+
+      try {
+        const localImage = await invoke<LocalImage>("read_local_image", {
+          baseDir,
+          imagePath,
+        });
+        if (renderId !== previewRenderId) {
+          return;
+        }
+        const objectUrl = URL.createObjectURL(
+          decodeBase64ToBlob(localImage.data, localImage.mimeType),
+        );
+        previewObjectUrls.push(objectUrl);
+        image.src = objectUrl;
+      } catch {
+        return;
+      }
+    }),
+  );
+}
+
 async function renderPreview(content: string): Promise<void> {
-  const html = markdownRenderer.render(content);
+  const renderId = ++previewRenderId;
+  revokePreviewObjectUrls();
+  const html = markdownRenderer.render(normalizeMarkdownFences(content));
   const sanitizedHtml = DOMPurify.sanitize(html);
   previewEl.innerHTML = sanitizedHtml;
-  await renderMermaidNodes(previewEl);
+  await loadLocalImages(previewEl, documentBaseDir, renderId);
+  if (renderId !== previewRenderId) {
+    return;
+  }
+  await renderMermaidNodes(previewEl, renderId);
 }
 
 function replaceEditorText(content: string): void {
@@ -210,6 +373,7 @@ async function handleImportMarkdown(): Promise<void> {
 
 async function applyOpenedExternalFile(opened: OpenedExternalFile): Promise<void> {
   cancelQueuedSave();
+  documentBaseDir = opened.baseDir;
   replaceEditorText(opened.content);
   setEditorReadOnly(opened.readOnly);
   await renderPreview(opened.content);

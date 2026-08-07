@@ -74,10 +74,22 @@ body {
   position: relative;
 }
 
+.display-mode-float {
+  position: fixed;
+  right: 28px;
+  bottom: 58px;
+  z-index: 50;
+}
+
+#display-mode-btn {
+  min-width: 150px;
+  box-shadow: 0 8px 20px rgba(20, 18, 14, 0.14);
+}
+
 .display-mode-menu {
   position: absolute;
   right: 0;
-  top: calc(100% + 8px);
+  bottom: calc(100% + 8px);
   min-width: 150px;
   display: grid;
   gap: 6px;
@@ -221,6 +233,13 @@ button:hover {
   color: var(--subtle);
 }
 
+.markdown-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
 .status-bar {
   border-top: 1px solid var(--line);
   padding: 8px 12px;
@@ -251,14 +270,18 @@ button:hover {
   .app-shell {
     min-height: calc(100vh - 16px);
   }
+
+  .display-mode-float {
+    right: 16px;
+    bottom: 52px;
+  }
 }
 
 @media print {
   .topbar,
   .editor-panel,
   .status-bar,
-  .menu-wrap,
-  #display-mode-btn {
+  .display-mode-float {
     display: none !important;
   }
 

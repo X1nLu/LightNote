@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -20,11 +21,18 @@ struct OpenedExternalFile {
     path: String,
     content: String,
     read_only: bool,
+    base_dir: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalImage {
+    data: String,
+    mime_type: String,
 }
 
 fn is_supported_text_extension(path: &Path) -> bool {
-    path
-        .extension()
+    path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| {
             let ext = ext.to_ascii_lowercase();
@@ -34,11 +42,27 @@ fn is_supported_text_extension(path: &Path) -> bool {
 }
 
 fn normalize_path(path: &Path) -> String {
-    path
-        .canonicalize()
+    path.canonicalize()
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .into_owned()
+}
+
+fn image_mime_type(path: &Path) -> Option<&'static str> {
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => Some("image/png"),
+        Some("jpg" | "jpeg") => Some("image/jpeg"),
+        Some("gif") => Some("image/gif"),
+        Some("webp") => Some("image/webp"),
+        Some("bmp") => Some("image/bmp"),
+        Some("avif") => Some("image/avif"),
+        _ => None,
+    }
 }
 
 fn first_supported_path(args: &[String]) -> Option<String> {
@@ -119,15 +143,53 @@ fn open_external_file(path: String) -> Result<OpenedExternalFile, String> {
         return Err("unsupported file type, only md/markdown/txt are allowed".to_string());
     }
 
-    let content = std::fs::read_to_string(&candidate)
-        .map_err(|err| format!("failed to read file: {err}"))?;
+    let content =
+        std::fs::read_to_string(&candidate).map_err(|err| format!("failed to read file: {err}"))?;
     let metadata = std::fs::metadata(&candidate)
         .map_err(|err| format!("failed to read file metadata: {err}"))?;
 
+    let normalized_path = normalize_path(&candidate);
+    let base_dir = Path::new(&normalized_path)
+        .parent()
+        .map(normalize_path)
+        .unwrap_or_default();
+
     Ok(OpenedExternalFile {
-        path: normalize_path(&candidate),
+        path: normalized_path,
         content,
         read_only: metadata.permissions().readonly(),
+        base_dir,
+    })
+}
+
+#[tauri::command]
+fn read_local_image(base_dir: String, image_path: String) -> Result<LocalImage, String> {
+    let base_dir = PathBuf::from(base_dir)
+        .canonicalize()
+        .map_err(|err| format!("failed to resolve document directory: {err}"))?;
+    let relative_path = PathBuf::from(image_path);
+    if relative_path.is_absolute() {
+        return Err("absolute image paths are not allowed".to_string());
+    }
+
+    let image_path = base_dir
+        .join(relative_path)
+        .canonicalize()
+        .map_err(|err| format!("failed to resolve image: {err}"))?;
+    if !image_path.starts_with(&base_dir) {
+        return Err("image path must stay inside the document directory".to_string());
+    }
+    if !image_path.is_file() {
+        return Err("image path is not a file".to_string());
+    }
+
+    let mime_type =
+        image_mime_type(&image_path).ok_or_else(|| "unsupported image type".to_string())?;
+    let data = std::fs::read(&image_path).map_err(|err| format!("failed to read image: {err}"))?;
+
+    Ok(LocalImage {
+        data: STANDARD.encode(data),
+        mime_type: mime_type.to_string(),
     })
 }
 
@@ -188,7 +250,8 @@ pub fn run() {
             load_document,
             save_document,
             take_pending_launch_path,
-            open_external_file
+            open_external_file,
+            read_local_image
         ]);
 
     builder
