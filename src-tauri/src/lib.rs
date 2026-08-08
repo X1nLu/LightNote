@@ -58,6 +58,7 @@ fn image_mime_type(path: &Path) -> Option<&'static str> {
         Some("png") => Some("image/png"),
         Some("jpg" | "jpeg") => Some("image/jpeg"),
         Some("gif") => Some("image/gif"),
+        Some("svg") => Some("image/svg+xml"),
         Some("webp") => Some("image/webp"),
         Some("bmp") => Some("image/bmp"),
         Some("avif") => Some("image/avif"),

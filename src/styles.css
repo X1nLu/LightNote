@@ -34,9 +34,10 @@ body {
 }
 
 .app-shell {
+  height: calc(100vh - 32px);
   min-height: calc(100vh - 32px);
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--panel-bg);
@@ -135,13 +136,42 @@ button:hover {
 .workspace {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
 
 .app-shell.mode-split .workspace {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(280px, var(--editor-pane-width, 1fr)) 10px minmax(280px, 1fr);
   grid-template-rows: 1fr;
+}
+
+.split-divider {
+  display: none;
+  position: relative;
+  width: 10px;
+  min-width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  background: transparent;
+}
+
+.split-divider::before {
+  content: "";
+  position: absolute;
+  inset: 0 4px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid transparent;
+}
+
+.split-divider:hover::before,
+.is-resizing-split .split-divider::before {
+  border-left-color: var(--accent);
+  background: #f2fbf9;
+}
+
+.app-shell.mode-split .split-divider {
+  display: block;
 }
 
 .app-shell.mode-preview .preview-panel {
@@ -174,7 +204,7 @@ button:hover {
 }
 
 .app-shell.mode-split .editor-panel {
-  border-right: 1px solid var(--line);
+  border-right: 0;
   border-bottom: 0;
 }
 
@@ -182,6 +212,7 @@ button:hover {
 #preview {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 #editor {
@@ -240,6 +271,21 @@ button:hover {
   border-radius: 8px;
 }
 
+.markdown-body [data-source-start][data-source-end] {
+  cursor: pointer;
+}
+
+.markdown-body [data-source-start][data-source-end]:hover {
+  outline: 1px solid rgba(15, 118, 110, 0.22);
+  outline-offset: 3px;
+}
+
+.markdown-body img.image-load-error {
+  min-height: 32px;
+  border: 1px dashed var(--line);
+  background: #f8f4eb;
+}
+
 .status-bar {
   border-top: 1px solid var(--line);
   padding: 8px 12px;
@@ -258,6 +304,10 @@ button:hover {
     grid-template-rows: minmax(240px, 1fr) minmax(220px, 1fr);
   }
 
+  .app-shell.mode-split .split-divider {
+    display: none;
+  }
+
   .app-shell.mode-split .editor-panel {
     border-right: 0;
     border-bottom: 1px solid var(--line);
@@ -268,6 +318,7 @@ button:hover {
   }
 
   .app-shell {
+    height: calc(100vh - 16px);
     min-height: calc(100vh - 16px);
   }
 

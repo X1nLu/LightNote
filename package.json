@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "node scripts/tauri-wrapper.mjs"
   },
   "dependencies": {
     "@codemirror/state": "^6.7.1",

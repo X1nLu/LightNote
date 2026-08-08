@@ -10,9 +10,11 @@ import { EditorView } from "@codemirror/view";
 import "katex/dist/katex.min.css";
 
 const appShellEl = document.querySelector(".app-shell") as HTMLElement;
+const workspaceEl = document.querySelector(".workspace") as HTMLElement;
 const statusEl = document.querySelector("#save-status") as HTMLSpanElement;
 const editorRootEl = document.querySelector("#editor") as HTMLDivElement;
 const previewEl = document.querySelector("#preview") as HTMLDivElement;
+const splitDividerEl = document.querySelector("#split-divider") as HTMLDivElement;
 
 const displayModeBtn = document.querySelector("#display-mode-btn") as HTMLButtonElement;
 const displayModeMenuEl = document.querySelector("#display-mode-menu") as HTMLDivElement;
@@ -30,6 +32,20 @@ const markdownRenderer = new MarkdownIt({
 }).use(markdownItKatex as never);
 
 const rawFenceRenderer = markdownRenderer.renderer.rules.fence;
+
+function getSourceRangeAttributes(token: any): string {
+  if (!Array.isArray(token.map) || token.map.length < 2) {
+    return "";
+  }
+
+  return ` data-source-start="${token.map[0] + 1}" data-source-end="${token.map[1]}"`;
+}
+
+function addSourceRangeToTag(html: string, tagName: string, token: any): string {
+  const attributes = getSourceRangeAttributes(token);
+  return attributes ? html.replace(`<${tagName}`, `<${tagName}${attributes}`) : html;
+}
+
 markdownRenderer.renderer.rules.fence = (
   tokens: any[],
   idx: number,
@@ -40,16 +56,22 @@ markdownRenderer.renderer.rules.fence = (
   const token = tokens[idx];
   const info = token.info.trim().split(/\s+/, 1)[0]?.toLowerCase();
   if (info === "mermaid") {
-    return `<div class="mermaid">${escapeHtml(normalizeMermaidSource(token.content))}</div>`;
+    return `<div class="mermaid"${getSourceRangeAttributes(token)}>${escapeHtml(normalizeMermaidSource(token.content))}</div>`;
   }
-  return rawFenceRenderer
+  const rendered = rawFenceRenderer
     ? rawFenceRenderer(tokens, idx, options, env, self)
     : self.renderToken(tokens, idx, options);
+  return addSourceRangeToTag(rendered, "pre", token);
 };
 
 let mermaidLib: typeof import("mermaid") | null = null;
 type DisplayMode = "editor" | "preview" | "split";
 const editableCompartment = new Compartment();
+const SPLIT_RATIO_STORAGE_KEY = "lightnote.split-pane-ratio";
+const DOCUMENT_BASE_DIR_STORAGE_KEY = "lightnote.document-base-dir";
+const DEFAULT_SPLIT_RATIO = 0.5;
+const MIN_SPLIT_PANEL_WIDTH = 280;
+const SPLIT_DIVIDER_WIDTH = 10;
 
 interface OpenedExternalFile {
   path: string;
@@ -81,8 +103,150 @@ let editorView: EditorView;
 let saveTimer: number | null = null;
 let mermaidRenderId = 0;
 let previewRenderId = 0;
-let documentBaseDir: string | null = null;
+let documentBaseDir: string | null = loadDocumentBaseDir();
 let previewObjectUrls: string[] = [];
+let splitRatio = loadSplitRatio();
+let activeSplitPointerId: number | null = null;
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), maximum);
+}
+
+function loadSplitRatio(): number {
+  try {
+    const storedRatio = Number.parseFloat(
+      window.localStorage.getItem(SPLIT_RATIO_STORAGE_KEY) ?? "",
+    );
+    return Number.isFinite(storedRatio)
+      ? clamp(storedRatio, 0.1, 0.9)
+      : DEFAULT_SPLIT_RATIO;
+  } catch {
+    return DEFAULT_SPLIT_RATIO;
+  }
+}
+
+function persistSplitRatio(): void {
+  try {
+    window.localStorage.setItem(SPLIT_RATIO_STORAGE_KEY, String(splitRatio));
+  } catch {
+    return;
+  }
+}
+
+function loadDocumentBaseDir(): string | null {
+  try {
+    const baseDir = window.localStorage.getItem(DOCUMENT_BASE_DIR_STORAGE_KEY);
+    return baseDir?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function persistDocumentBaseDir(baseDir: string | null): void {
+  try {
+    if (baseDir) {
+      window.localStorage.setItem(DOCUMENT_BASE_DIR_STORAGE_KEY, baseDir);
+    } else {
+      window.localStorage.removeItem(DOCUMENT_BASE_DIR_STORAGE_KEY);
+    }
+  } catch {
+    return;
+  }
+}
+
+function isSplitMode(): boolean {
+  return appShellEl.classList.contains("mode-split");
+}
+
+function getSplitMetrics(): {
+  availableWidth: number;
+  minimumRatio: number;
+  maximumRatio: number;
+} | null {
+  const workspaceWidth = workspaceEl.getBoundingClientRect().width;
+  const dividerWidth =
+    splitDividerEl.getBoundingClientRect().width || SPLIT_DIVIDER_WIDTH;
+  const availableWidth = workspaceWidth - dividerWidth;
+  if (availableWidth <= 0) {
+    return null;
+  }
+
+  const minimumRatio = MIN_SPLIT_PANEL_WIDTH / availableWidth;
+  return {
+    availableWidth,
+    minimumRatio,
+    maximumRatio: 1 - minimumRatio,
+  };
+}
+
+function applySplitRatio(): void {
+  if (!isSplitMode() || window.matchMedia("(max-width: 980px)").matches) {
+    return;
+  }
+
+  const metrics = getSplitMetrics();
+  if (!metrics || metrics.minimumRatio > metrics.maximumRatio) {
+    return;
+  }
+
+  splitRatio = clamp(splitRatio, metrics.minimumRatio, metrics.maximumRatio);
+  const editorWidth = metrics.availableWidth * splitRatio;
+  workspaceEl.style.setProperty("--editor-pane-width", `${editorWidth}px`);
+  splitDividerEl.setAttribute("aria-valuemin", String(MIN_SPLIT_PANEL_WIDTH));
+  splitDividerEl.setAttribute(
+    "aria-valuemax",
+    String(Math.floor(metrics.availableWidth - MIN_SPLIT_PANEL_WIDTH)),
+  );
+  splitDividerEl.setAttribute("aria-valuenow", String(Math.round(editorWidth)));
+}
+
+function updateSplitRatioFromPointer(clientX: number): void {
+  const metrics = getSplitMetrics();
+  if (!metrics) {
+    return;
+  }
+
+  const workspaceRect = workspaceEl.getBoundingClientRect();
+  const dividerWidth =
+    splitDividerEl.getBoundingClientRect().width || SPLIT_DIVIDER_WIDTH;
+  const editorWidth = clientX - workspaceRect.left - dividerWidth / 2;
+  splitRatio = clamp(
+    editorWidth / metrics.availableWidth,
+    metrics.minimumRatio,
+    metrics.maximumRatio,
+  );
+  applySplitRatio();
+}
+
+function handleSplitPointerDown(event: PointerEvent): void {
+  if (!isSplitMode() || window.matchMedia("(max-width: 980px)").matches) {
+    return;
+  }
+
+  event.preventDefault();
+  activeSplitPointerId = event.pointerId;
+  document.body.classList.add("is-resizing-split");
+  updateSplitRatioFromPointer(event.clientX);
+}
+
+function handleSplitPointerMove(event: PointerEvent): void {
+  if (event.pointerId !== activeSplitPointerId) {
+    return;
+  }
+
+  event.preventDefault();
+  updateSplitRatioFromPointer(event.clientX);
+}
+
+function handleSplitPointerEnd(event: PointerEvent): void {
+  if (event.pointerId !== activeSplitPointerId) {
+    return;
+  }
+
+  activeSplitPointerId = null;
+  document.body.classList.remove("is-resizing-split");
+  persistSplitRatio();
+}
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => {
@@ -166,8 +330,12 @@ function setDisplayMode(mode: DisplayMode): void {
     optionBtn.classList.toggle("is-active", optionBtn.dataset.displayMode === mode);
   }
 
+  applySplitRatio();
+
   if (mode !== "editor" && editorView) {
-    void renderPreview(getEditorContent());
+    void renderPreview(getEditorContent()).then(() => {
+      syncPreviewToEditor(editorView);
+    });
   }
 }
 
@@ -297,6 +465,9 @@ async function loadLocalImages(
   await Promise.all(
     images.map(async (image) => {
       const source = image.getAttribute("src");
+      if (source) {
+        image.dataset.originalSrc = source;
+      }
       const imagePath = source ? getLocalImagePath(source) : null;
       if (!imagePath) {
         return;
@@ -315,17 +486,131 @@ async function loadLocalImages(
         );
         previewObjectUrls.push(objectUrl);
         image.src = objectUrl;
+        image.classList.remove("image-load-error");
       } catch {
+        image.classList.add("image-load-error");
         return;
       }
     }),
   );
 }
 
+function renderMarkdownWithSourceRanges(content: string): string {
+  const tokens = markdownRenderer.parse(normalizeMarkdownFences(content), {});
+  for (const token of tokens) {
+    if (!Array.isArray(token.map) || token.map.length < 2 || token.nesting === -1) {
+      continue;
+    }
+    token.attrSet("data-source-start", String(token.map[0] + 1));
+    token.attrSet("data-source-end", String(token.map[1]));
+  }
+  return markdownRenderer.renderer.render(
+    tokens,
+    markdownRenderer.options,
+    {},
+  );
+}
+
+function getPreviewBlockForLine(lineNumber: number): HTMLElement | null {
+  const blocks = Array.from(
+    previewEl.querySelectorAll<HTMLElement>(
+      "[data-source-start][data-source-end]",
+    ),
+  )
+    .map((element) => ({
+      element,
+      start: Number.parseInt(element.dataset.sourceStart ?? "", 10),
+      end: Number.parseInt(element.dataset.sourceEnd ?? "", 10),
+    }))
+    .filter(({ start, end }) => Number.isFinite(start) && Number.isFinite(end));
+
+  let containingBlock: (typeof blocks)[number] | null = null;
+  for (const block of blocks) {
+    if (lineNumber < block.start || lineNumber > block.end) {
+      continue;
+    }
+    if (
+      !containingBlock ||
+      block.end - block.start <= containingBlock.end - containingBlock.start
+    ) {
+      containingBlock = block;
+    }
+  }
+  if (containingBlock) {
+    return containingBlock.element;
+  }
+
+  const nextBlock = blocks.find(({ start }) => start > lineNumber);
+  return nextBlock?.element ?? blocks[blocks.length - 1]?.element ?? null;
+}
+
+function syncPreviewToEditor(view: EditorView): void {
+  if (!isSplitMode()) {
+    return;
+  }
+
+  const lineNumber = view.state.doc.lineAt(view.state.selection.main.head).number;
+  const block = getPreviewBlockForLine(lineNumber);
+  if (!block) {
+    return;
+  }
+
+  const previewRect = previewEl.getBoundingClientRect();
+  const blockRect = block.getBoundingClientRect();
+  const topOffset = Math.min(72, Math.max(24, previewEl.clientHeight * 0.16));
+  const targetTop =
+    previewEl.scrollTop + blockRect.top - previewRect.top - topOffset;
+  const maxScrollTop = Math.max(0, previewEl.scrollHeight - previewEl.clientHeight);
+  previewEl.scrollTop = clamp(targetTop, 0, maxScrollTop);
+}
+
+function getSourceLineFromPreviewTarget(target: EventTarget | null): number | null {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+
+  const block = target.closest<HTMLElement>(
+    "[data-source-start][data-source-end]",
+  );
+  if (!block || target.closest("a, button, input, textarea, select, option")) {
+    return null;
+  }
+
+  const lineNumber = Number.parseInt(block.dataset.sourceStart ?? "", 10);
+  return Number.isFinite(lineNumber) ? lineNumber : null;
+}
+
+function focusEditorLine(lineNumber: number): void {
+  if (!editorView) {
+    return;
+  }
+
+  const line = editorView.state.doc.line(
+    clamp(lineNumber, 1, editorView.state.doc.lines),
+  );
+  editorView.dispatch({
+    selection: { anchor: line.from },
+    effects: EditorView.scrollIntoView(line.from, { y: "center" }),
+  });
+  editorView.focus();
+}
+
+function handlePreviewClick(event: MouseEvent): void {
+  const lineNumber = getSourceLineFromPreviewTarget(event.target);
+  if (lineNumber === null) {
+    return;
+  }
+
+  if (!appShellEl.classList.contains("mode-split")) {
+    setDisplayMode("editor");
+  }
+  focusEditorLine(lineNumber);
+}
+
 async function renderPreview(content: string): Promise<void> {
   const renderId = ++previewRenderId;
   revokePreviewObjectUrls();
-  const html = markdownRenderer.render(normalizeMarkdownFences(content));
+  const html = renderMarkdownWithSourceRanges(content);
   const sanitizedHtml = DOMPurify.sanitize(html);
   previewEl.innerHTML = sanitizedHtml;
   await loadLocalImages(previewEl, documentBaseDir, renderId);
@@ -374,6 +659,7 @@ async function handleImportMarkdown(): Promise<void> {
 async function applyOpenedExternalFile(opened: OpenedExternalFile): Promise<void> {
   cancelQueuedSave();
   documentBaseDir = opened.baseDir;
+  persistDocumentBaseDir(documentBaseDir);
   replaceEditorText(opened.content);
   setEditorReadOnly(opened.readOnly);
   await renderPreview(opened.content);
@@ -414,7 +700,12 @@ async function listenForCliFileOpenEvent(): Promise<void> {
 }
 
 async function initEditor(): Promise<void> {
-  const content = (await invoke<string>("load_document")) || INITIAL_TEXT;
+  const storedContent = await invoke<string>("load_document");
+  const content = storedContent || INITIAL_TEXT;
+  if (!storedContent) {
+    documentBaseDir = null;
+    persistDocumentBaseDir(null);
+  }
 
   editorView = new EditorView({
     state: EditorState.create({
@@ -424,12 +715,18 @@ async function initEditor(): Promise<void> {
         EditorView.lineWrapping,
         editableCompartment.of(EditorView.editable.of(true)),
         EditorView.updateListener.of((update) => {
-          if (!update.docChanged) {
+          if (update.docChanged) {
+            const latest = update.state.doc.toString();
+            void renderPreview(latest).then(() => {
+              syncPreviewToEditor(update.view);
+            });
+            queueSave(latest);
             return;
           }
-          const latest = update.state.doc.toString();
-          void renderPreview(latest);
-          queueSave(latest);
+
+          if (update.selectionSet || update.viewportChanged) {
+            syncPreviewToEditor(update.view);
+          }
         }),
       ],
     }),
@@ -464,6 +761,14 @@ window.addEventListener("DOMContentLoaded", () => {
   openFileBtn.addEventListener("click", () => {
     void handleImportMarkdown();
   });
+
+  previewEl.addEventListener("click", handlePreviewClick);
+
+  splitDividerEl.addEventListener("pointerdown", handleSplitPointerDown);
+  document.addEventListener("pointermove", handleSplitPointerMove);
+  document.addEventListener("pointerup", handleSplitPointerEnd);
+  document.addEventListener("pointercancel", handleSplitPointerEnd);
+  window.addEventListener("resize", applySplitRatio);
 
   document.addEventListener("click", (event) => {
     const target = event.target as Node;

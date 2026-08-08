@@ -5,7 +5,8 @@
 ## 功能
 
 - 单栏源码编辑：稳定显示完整 Markdown 源码，避免编辑态样式干扰。
-- 左右分栏：左侧完整 Markdown 源码，右侧实时预览。
+- 左右分栏：左侧完整 Markdown 源码，右侧实时预览；桌面端可拖拽分隔条调整宽度。
+- 焦点跟随预览：分栏时预览按编辑器光标和滚动位置定位到对应 Markdown 块。
 - KaTeX：支持行内数学和块级数学预览。
 - GFM 表格和代码块：单栏直接编辑源码，分栏预览完整渲染。
 - Mermaid：在分栏预览中异步渲染流程图。
@@ -50,7 +51,7 @@ flowchart LR
 
 ### 分栏模式
 
-通过“显示模式 -> 分栏”进入。左侧继续显示 Markdown 源码，右侧实时渲染预览。
+通过“显示模式 -> 分栏”进入。左侧继续显示 Markdown 源码，右侧实时渲染预览。桌面端拖拽两栏之间的分隔条即可调整宽度，比例会自动记住；编辑器光标移动或滚动时，预览会即时定位到对应内容。
 
 ### 单栏预览模式
 
@@ -103,7 +104,9 @@ npm run build
 npm run tauri build
 ```
 
-默认会在 `src-tauri/target/release/bundle/` 下生成 Windows 安装包，通常包括：
+该命令会通过仓库内的 Tauri 包装脚本调用 CLI；在 Windows 上打包前会先清理旧安装包，并将 `src-tauri/target/` 及其 bundle 目录标记为“无内容索引”，以降低资源管理器或 Windows Search 对新产物的瞬时占用概率。
+
+当前仓库默认会在 `src-tauri/target/release/bundle/` 下生成 Windows 安装包，通常包括：
 
 - `msi/`：MSI 安装包，适合企业部署和静默安装。
 - `nsis/`：NSIS 安装程序，适合普通用户分发。
@@ -121,6 +124,14 @@ npm run tauri build
 - `src-tauri/target/release/lightnote.exe`：未打包的 Windows 可执行文件。
 
 发布前建议使用代码签名证书签名 `.msi` 或安装程序，以减少 Windows SmartScreen 警告。可使用 Windows SDK 自带的 `signtool`，或在 CI 中配置签名步骤。
+
+如果确实需要 MSI，可单独尝试：
+
+```powershell
+npx tauri build --bundles msi
+```
+
+当前仓库会在打包前清理旧的 MSI/NSIS 安装包，并将 `src-tauri/target/` 及其 bundle 目录标记为“无内容索引”，以降低 Windows Search 或资源管理器对新产物的瞬时占用概率。即使在安装包已经生成后出现短暂文件锁，包装脚本也只会在确认本次请求的安装包都已生成且可访问后返回成功。
 
 ### macOS
 
@@ -170,6 +181,9 @@ cargo build --manifest-path src-tauri/Cargo.toml --release
 │   ├── src/lib.rs       # Tauri 命令与 SQLite 初始化
 │   ├── capabilities/    # 对话框权限
 │   └── tauri.conf.json  # 桌面应用配置
+├── scripts/
+│   ├── tauri-wrapper.mjs         # Windows 下包装 tauri build，处理安装包瞬时文件锁
+│   └── prepare-windows-bundle.mjs # 打包前清理旧产物并降低索引占用概率
 ├── index.html           # 页面壳与操作按钮
 └── package.json         # 前端脚本与依赖
 ```
