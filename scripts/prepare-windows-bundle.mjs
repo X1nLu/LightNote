@@ -47,7 +47,6 @@ function markNoIndex(directories) {
   for (const directory of directories) {
     spawnSync('attrib', ['+I', directory, '/S', '/D'], {
       cwd: projectRoot,
-      shell: true,
       stdio: 'ignore',
       windowsHide: true,
     });

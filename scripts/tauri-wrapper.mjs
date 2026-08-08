@@ -7,10 +7,11 @@ const isWindowsBuild = process.platform === 'win32' && args[0] === 'build';
 const buildStartedAt = Date.now();
 const expectedBundles = await resolveExpectedBundles(args);
 
-const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-const child = spawn(command, ['tauri', ...args], {
+const command = process.platform === 'win32' ? 'cmd.exe' : 'npx';
+const commandArgs =
+  process.platform === 'win32' ? ['/d', '/s', '/c', 'npx', 'tauri', ...args] : ['tauri', ...args];
+const child = spawn(command, commandArgs, {
   cwd: process.cwd(),
-  shell: process.platform === 'win32',
   stdio: ['inherit', 'pipe', 'pipe'],
 });
 
