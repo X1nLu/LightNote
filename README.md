@@ -11,7 +11,8 @@
 - GFM 表格和代码块：单栏直接编辑源码，分栏预览完整渲染。
 - Mermaid：在分栏预览中异步渲染流程图。
 - 原生菜单与快捷键：通过 Tauri 原生“文件、编辑、视图”菜单操作当前文档，支持常用编辑与视图快捷键。
-- 主题切换：在“视图”菜单中选择跟随系统、浅色或深色主题；默认跟随系统并记住手动选择。
+- 视图设置：在“视图 -> 显示模式”中选择编辑器、预览或分栏；在“视图 -> 主题”中选择跟随系统、浅色或深色主题。
+- 界面语言：在“视图 -> 语言”中选择跟随系统、中文简体或 English；选择后关闭并重新打开应用生效，并会记住选择。
 - 自动保存：已打开的可写文件停止编辑 1 秒后自动保存；新文档首次仍需手动选择保存位置。
 - 当前文档搜索：使用 CodeMirror 查找/替换，支持 `Ctrl+F`、`Ctrl+H`、`F3` 和 `Shift+F3`。
 - 英文拼写检查：Rust 侧使用 Hunspell 兼容词典检查当前文档，并在编辑器中标记可能的拼写错误。
@@ -68,6 +69,7 @@ flowchart LR
 - “打开文件”：导入 `.md`、`.markdown` 或 `.txt`。
 - “保存文件”：将当前内容写回已打开的可写文件；只读文件或新文档会弹出保存位置。也可以使用 `Ctrl+S`。
 - “视图 -> 主题”：可选择跟随系统、浅色或深色主题，页面、编辑器、预览、代码块和 Mermaid 图表会同步更新。
+- “视图 -> 语言”：可选择跟随系统、中文简体或 English。默认跟随操作系统语言；手动选择后需要重启应用，菜单、窗口标题和应用文案会统一切换。Windows 原生打开/保存对话框继续跟随 Windows 系统语言。
 - 自动保存：已打开的可写文件在停止编辑 1 秒后自动写回。若磁盘文件已被其他程序修改，自动保存会暂停，手动保存时可选择是否覆盖。
 - 当前文档查找：`Ctrl+F` 查找，`Ctrl+H` 查找和替换，`F3`/`Shift+F3` 跳转到下一个/上一个匹配。
 - 全局聚焦：`Ctrl+Shift+Space` 可在应用失焦或最小化时唤起 LightNote；若快捷键已被其他应用占用，LightNote 仍会正常启动。
@@ -137,6 +139,7 @@ npm run tauri build
 
 安装体验说明：
 
+- NSIS 安装器支持 English 和简体中文语言选择，默认使用 Windows 系统语言；MSI 分别提供英文和简体中文安装包。
 - NSIS 安装器会在安装流程里询问是否添加 `.md`、`.markdown`、`.txt` 的右键菜单（默认“是”）。
 - MSI/NSIS 都会包含文件关联声明，安装后可通过系统“打开方式/默认应用”将这些扩展名关联到 LightNote。
 - 卸载时会自动清理 LightNote 写入的右键菜单注册表项。
@@ -144,6 +147,7 @@ npm run tauri build
 当前版本的具体产物路径为：
 
 - `src-tauri/target/release/bundle/msi/LightNote_0.1.0_x64_en-US.msi`
+- `src-tauri/target/release/bundle/msi/LightNote_0.1.0_x64_zh-CN.msi`
 - `src-tauri/target/release/bundle/nsis/LightNote_0.1.0_x64-setup.exe`
 - `src-tauri/target/release/lightnote.exe`：未打包的 Windows 可执行文件。
 
@@ -208,7 +212,7 @@ cargo build --manifest-path src-tauri/Cargo.toml --release
 ├── scripts/
 │   ├── tauri-wrapper.mjs         # Windows 下包装 tauri build，处理安装包瞬时文件锁
 │   └── prepare-windows-bundle.mjs # 打包前清理旧产物并降低索引占用概率
-├── index.html           # 页面壳与操作按钮
+├── index.html           # 页面壳
 └── package.json         # 前端脚本与依赖
 ```
 

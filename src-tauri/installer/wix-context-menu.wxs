@@ -14,7 +14,7 @@
         </RegistryKey>
 
         <RegistryKey Root="HKCU" Key="Software\Classes\SystemFileAssociations\.md\shell\LightNote">
-          <RegistryValue Type="string" Value="Open with LightNote" />
+          <RegistryValue Type="string" Value="!(loc.OpenWith)" />
           <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]lightnote.exe,0" />
           <RegistryValue Name="MultiSelectModel" Type="string" Value="Single" />
         </RegistryKey>
@@ -23,7 +23,7 @@
         </RegistryKey>
 
         <RegistryKey Root="HKCU" Key="Software\Classes\SystemFileAssociations\.markdown\shell\LightNote">
-          <RegistryValue Type="string" Value="Open with LightNote" />
+          <RegistryValue Type="string" Value="!(loc.OpenWith)" />
           <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]lightnote.exe,0" />
           <RegistryValue Name="MultiSelectModel" Type="string" Value="Single" />
         </RegistryKey>
@@ -32,7 +32,7 @@
         </RegistryKey>
 
         <RegistryKey Root="HKCU" Key="Software\Classes\SystemFileAssociations\.txt\shell\LightNote">
-          <RegistryValue Type="string" Value="Open with LightNote" />
+          <RegistryValue Type="string" Value="!(loc.OpenWith)" />
           <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]lightnote.exe,0" />
           <RegistryValue Name="MultiSelectModel" Type="string" Value="Single" />
         </RegistryKey>

@@ -44,7 +44,7 @@ ${StrLoc}
 !define ARCH "x64"
 !define ADDITIONALPLUGINSPATH "C:\Users\zxinl\AppData\Local\tauri\NSIS\Plugins\x86-unicode\additional"
 !define ALLOWDOWNGRADES "true"
-!define DISPLAYLANGUAGESELECTOR "false"
+!define DISPLAYLANGUAGESELECTOR "true"
 !define INSTALLWEBVIEW2MODE "downloadBootstrapper"
 !define WEBVIEW2INSTALLERARGS "/silent"
 !define WEBVIEW2BOOTSTRAPPERPATH ""
@@ -457,8 +457,10 @@ FunctionEnd
 
 ;Languages
 !insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_RESERVEFILE_LANGDLL
   !include "D:\WWW\LightNote\src-tauri\target\release\nsis\x64\English.nsh"
+  !include "D:\WWW\LightNote\src-tauri\target\release\nsis\x64\SimpChinese.nsh"
 
 Function .onInit
   ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -638,9 +640,9 @@ Section Install
   ; Copy external binaries
 
   ; Create file associations
-!insertmacro APP_ASSOCIATE "md" "Markdown Document" "Markdown file" "$INSTDIR\${MAINBINARYNAME}.exe,0" "Open with ${PRODUCTNAME}" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
-!insertmacro APP_ASSOCIATE "markdown" "Markdown Document" "Markdown file" "$INSTDIR\${MAINBINARYNAME}.exe,0" "Open with ${PRODUCTNAME}" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
-!insertmacro APP_ASSOCIATE "txt" "Text Document" "Text file" "$INSTDIR\${MAINBINARYNAME}.exe,0" "Open with ${PRODUCTNAME}" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
+!insertmacro APP_ASSOCIATE "md" "$(markdownDocument)" "$(markdownFile)" "$INSTDIR\${MAINBINARYNAME}.exe,0" "$(openWithLightNote)" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
+!insertmacro APP_ASSOCIATE "markdown" "$(markdownDocument)" "$(markdownFile)" "$INSTDIR\${MAINBINARYNAME}.exe,0" "$(openWithLightNote)" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
+!insertmacro APP_ASSOCIATE "txt" "$(textDocument)" "$(textFile)" "$INSTDIR\${MAINBINARYNAME}.exe,0" "$(openWithLightNote)" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
 
   ; Register deep links
 

@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::State;
@@ -16,6 +16,150 @@ struct LaunchPathState {
 
 struct SpellcheckState {
     dictionary: Mutex<Option<spellbook::Dictionary>>,
+}
+
+const LANGUAGE_CONFIG_FILE: &str = "language-preference";
+
+fn normalize_language(value: &str) -> Option<&'static str> {
+    match value {
+        "system" => Some("system"),
+        "zh-CN" => Some("zh-CN"),
+        "en" => Some("en"),
+        _ => None,
+    }
+}
+
+fn system_language() -> &'static str {
+    sys_locale::get_locale()
+        .as_deref()
+        .map(|locale| locale.to_ascii_lowercase())
+        .as_deref()
+        .map(|locale| if locale.starts_with("zh") { "zh-CN" } else { "en" })
+        .unwrap_or("en")
+}
+
+fn language_config_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
+    let directory = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| format!("failed to resolve language config directory: {error}"))?;
+    Ok(directory.join(LANGUAGE_CONFIG_FILE))
+}
+
+fn read_language_preference<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> &'static str {
+    language_config_path(app)
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|value| normalize_language(value.trim()))
+        .unwrap_or("system")
+}
+
+fn resolve_language<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> &'static str {
+    match read_language_preference(app) {
+        "system" => system_language(),
+        language => language,
+    }
+}
+
+fn set_menu_item_text<R: tauri::Runtime>(item: Option<MenuItemKind<R>>, text: &str) {
+    let Some(item) = item else {
+        return;
+    };
+    match item {
+        MenuItemKind::MenuItem(item) => {
+            let _ = item.set_text(text);
+        }
+        MenuItemKind::Submenu(item) => {
+            let _ = item.set_text(text);
+        }
+        MenuItemKind::Predefined(item) => {
+            let _ = item.set_text(text);
+        }
+        MenuItemKind::Check(item) => {
+            let _ = item.set_text(text);
+        }
+        MenuItemKind::Icon(item) => {
+            let _ = item.set_text(text);
+        }
+    }
+}
+
+fn update_menu_language<R: tauri::Runtime>(app: &tauri::AppHandle<R>, english: bool) {
+    let Some(menu) = app.menu() else {
+        return;
+    };
+    let items = menu.items().unwrap_or_default();
+    let Some(MenuItemKind::Submenu(file_menu)) = items.first() else {
+        return;
+    };
+    let Some(MenuItemKind::Submenu(edit_menu)) = items.get(1) else {
+        return;
+    };
+    let Some(MenuItemKind::Submenu(view_menu)) = items.get(2) else {
+        return;
+    };
+
+    set_menu_item_text(Some(MenuItemKind::Submenu(file_menu.clone())), if english { "File" } else { "文件" });
+    set_menu_item_text(file_menu.get("file.open"), if english { "Open File" } else { "打开文件" });
+    set_menu_item_text(file_menu.get("file.save"), if english { "Save" } else { "保存" });
+    set_menu_item_text(file_menu.get("quit"), if english { "Quit" } else { "退出" });
+
+    set_menu_item_text(Some(MenuItemKind::Submenu(edit_menu.clone())), if english { "Edit" } else { "编辑" });
+    set_menu_item_text(edit_menu.get("edit.undo"), if english { "Undo" } else { "撤销" });
+    set_menu_item_text(edit_menu.get("edit.redo"), if english { "Redo" } else { "重做" });
+    set_menu_item_text(edit_menu.get("cut"), if english { "Cut" } else { "剪切" });
+    set_menu_item_text(edit_menu.get("copy"), if english { "Copy" } else { "复制" });
+    set_menu_item_text(edit_menu.get("paste"), if english { "Paste" } else { "粘贴" });
+    set_menu_item_text(edit_menu.get("select_all"), if english { "Select All" } else { "全选" });
+    set_menu_item_text(edit_menu.get("edit.find"), if english { "Find" } else { "查找" });
+    set_menu_item_text(edit_menu.get("edit.replace"), if english { "Find and Replace" } else { "查找和替换" });
+    set_menu_item_text(edit_menu.get("edit.find_next"), if english { "Find Next" } else { "下一个匹配" });
+    set_menu_item_text(edit_menu.get("edit.find_previous"), if english { "Find Previous" } else { "上一个匹配" });
+
+    set_menu_item_text(Some(MenuItemKind::Submenu(view_menu.clone())), if english { "View" } else { "视图" });
+    let view_items = view_menu.items().unwrap_or_default();
+    let Some(MenuItemKind::Submenu(display_mode_menu)) = view_items.first() else {
+        return;
+    };
+    let Some(MenuItemKind::Submenu(theme_menu)) = view_items.get(1) else {
+        return;
+    };
+    let Some(MenuItemKind::Submenu(language_menu)) = view_items.get(2) else {
+        return;
+    };
+    set_menu_item_text(Some(MenuItemKind::Submenu(display_mode_menu.clone())), if english { "Display Mode" } else { "显示模式" });
+    set_menu_item_text(display_mode_menu.get("view.editor"), if english { "Editor" } else { "单栏编辑" });
+    set_menu_item_text(display_mode_menu.get("view.preview"), if english { "Preview" } else { "单栏预览" });
+    set_menu_item_text(display_mode_menu.get("view.split"), if english { "Split View" } else { "分栏" });
+    set_menu_item_text(Some(MenuItemKind::Submenu(theme_menu.clone())), if english { "Theme" } else { "主题" });
+    set_menu_item_text(theme_menu.get("view.theme.system"), if english { "System" } else { "跟随系统" });
+    set_menu_item_text(theme_menu.get("view.theme.light"), if english { "Light" } else { "浅色" });
+    set_menu_item_text(theme_menu.get("view.theme.dark"), if english { "Dark" } else { "深色" });
+    set_menu_item_text(Some(MenuItemKind::Submenu(language_menu.clone())), if english { "Language" } else { "语言" });
+    set_menu_item_text(language_menu.get("language.system"), if english { "Follow System" } else { "跟随系统" });
+    set_menu_item_text(language_menu.get("language.zh-CN"), if english { "Simplified Chinese" } else { "中文简体" });
+    set_menu_item_text(language_menu.get("language.en"), "English");
+}
+
+#[tauri::command]
+fn get_language_preference<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> String {
+    read_language_preference(&app).to_string()
+}
+
+#[tauri::command]
+fn set_language_preference<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    language: String,
+) -> Result<(), String> {
+    let language = normalize_language(language.trim())
+        .ok_or_else(|| "unsupported language preference".to_string())?;
+    let path = language_config_path(&app)?;
+    if let Some(directory) = path.parent() {
+        std::fs::create_dir_all(directory)
+            .map_err(|error| format!("failed to create language config directory: {error}"))?;
+    }
+    std::fs::write(path, language)
+        .map_err(|error| format!("failed to save language preference: {error}"))
 }
 
 #[derive(Serialize)]
@@ -379,6 +523,15 @@ pub fn run() {
             app.manage(SpellcheckState {
                 dictionary: Mutex::new(None),
             });
+            if let Some(window) = app.get_webview_window("main") {
+                let title = if resolve_language(&app.handle()) == "en" {
+                    "LightNote"
+                } else {
+                    "LightNote - 轻笺"
+                };
+                let _ = window.set_title(title);
+            }
+            update_menu_language(&app.handle(), resolve_language(&app.handle()) == "en");
             let _ = app.global_shortcut().on_shortcut(
                 "Ctrl+Shift+Space",
                 |app, _shortcut, event| {
@@ -395,44 +548,57 @@ pub fn run() {
             Ok(())
         })
         .menu(|app| {
-            let open = MenuItem::with_id(app, "file.open", "打开文件", true, Some("Ctrl+O"))?;
-            let save = MenuItem::with_id(app, "file.save", "保存", true, Some("Ctrl+S"))?;
+            let english = system_language() == "en";
+            let open = MenuItem::with_id(
+                app,
+                "file.open",
+                if english { "Open File" } else { "打开文件" },
+                true,
+                Some("Ctrl+O"),
+            )?;
+            let save = MenuItem::with_id(
+                app,
+                "file.save",
+                if english { "Save" } else { "保存" },
+                true,
+                Some("Ctrl+S"),
+            )?;
             let file_menu = Submenu::with_items(
                 app,
-                "文件",
+                if english { "File" } else { "文件" },
                 true,
                 &[
                     &open,
                     &save,
                     &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::quit(app, Some("退出"))?,
+                    &PredefinedMenuItem::quit(app, Some(if english { "Quit" } else { "退出" }))?,
                 ],
             )?;
 
-            let undo = MenuItem::with_id(app, "edit.undo", "撤销", true, Some("Ctrl+Z"))?;
-            let redo = MenuItem::with_id(app, "edit.redo", "重做", true, Some("Ctrl+Y"))?;
-            let find = MenuItem::with_id(app, "edit.find", "查找", true, Some("Ctrl+F"))?;
-            let replace = MenuItem::with_id(app, "edit.replace", "查找和替换", true, Some("Ctrl+H"))?;
-            let find_next = MenuItem::with_id(app, "edit.find_next", "下一个匹配", true, Some("F3"))?;
+            let undo = MenuItem::with_id(app, "edit.undo", if english { "Undo" } else { "撤销" }, true, Some("Ctrl+Z"))?;
+            let redo = MenuItem::with_id(app, "edit.redo", if english { "Redo" } else { "重做" }, true, Some("Ctrl+Y"))?;
+            let find = MenuItem::with_id(app, "edit.find", if english { "Find" } else { "查找" }, true, Some("Ctrl+F"))?;
+            let replace = MenuItem::with_id(app, "edit.replace", if english { "Find and Replace" } else { "查找和替换" }, true, Some("Ctrl+H"))?;
+            let find_next = MenuItem::with_id(app, "edit.find_next", if english { "Find Next" } else { "下一个匹配" }, true, Some("F3"))?;
             let find_previous = MenuItem::with_id(
                 app,
                 "edit.find_previous",
-                "上一个匹配",
+                if english { "Find Previous" } else { "上一个匹配" },
                 true,
                 Some("Shift+F3"),
             )?;
             let edit_menu = Submenu::with_items(
                 app,
-                "编辑",
+                if english { "Edit" } else { "编辑" },
                 true,
                 &[
                     &undo,
                     &redo,
                     &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::cut(app, Some("剪切"))?,
-                    &PredefinedMenuItem::copy(app, Some("复制"))?,
-                    &PredefinedMenuItem::paste(app, Some("粘贴"))?,
-                    &PredefinedMenuItem::select_all(app, Some("全选"))?,
+                    &PredefinedMenuItem::cut(app, Some(if english { "Cut" } else { "剪切" }))?,
+                    &PredefinedMenuItem::copy(app, Some(if english { "Copy" } else { "复制" }))?,
+                    &PredefinedMenuItem::paste(app, Some(if english { "Paste" } else { "粘贴" }))?,
+                    &PredefinedMenuItem::select_all(app, Some(if english { "Select All" } else { "全选" }))?,
                     &PredefinedMenuItem::separator(app)?,
                     &find,
                     &replace,
@@ -441,24 +607,41 @@ pub fn run() {
                 ],
             )?;
 
-            let editor = MenuItem::with_id(app, "view.editor", "单栏编辑", true, Some("Ctrl+1"))?;
-            let preview = MenuItem::with_id(app, "view.preview", "单栏预览", true, Some("Ctrl+2"))?;
-            let split = MenuItem::with_id(app, "view.split", "分栏", true, Some("Ctrl+3"))?;
-            let theme_system = MenuItem::with_id(app, "view.theme.system", "主题：跟随系统", true, None::<&str>)?;
-            let theme_light = MenuItem::with_id(app, "view.theme.light", "主题：浅色", true, None::<&str>)?;
-            let theme_dark = MenuItem::with_id(app, "view.theme.dark", "主题：深色", true, None::<&str>)?;
+            let editor = MenuItem::with_id(app, "view.editor", if english { "Editor" } else { "单栏编辑" }, true, Some("Ctrl+1"))?;
+            let preview = MenuItem::with_id(app, "view.preview", if english { "Preview" } else { "单栏预览" }, true, Some("Ctrl+2"))?;
+            let split = MenuItem::with_id(app, "view.split", if english { "Split View" } else { "分栏" }, true, Some("Ctrl+3"))?;
+            let display_mode_menu = Submenu::with_items(
+                app,
+                if english { "Display Mode" } else { "显示模式" },
+                true,
+                &[&editor, &preview, &split],
+            )?;
+            let theme_system = MenuItem::with_id(app, "view.theme.system", if english { "System" } else { "跟随系统" }, true, None::<&str>)?;
+            let theme_light = MenuItem::with_id(app, "view.theme.light", if english { "Light" } else { "浅色" }, true, None::<&str>)?;
+            let theme_dark = MenuItem::with_id(app, "view.theme.dark", if english { "Dark" } else { "深色" }, true, None::<&str>)?;
+            let theme_menu = Submenu::with_items(
+                app,
+                if english { "Theme" } else { "主题" },
+                true,
+                &[&theme_system, &theme_light, &theme_dark],
+            )?;
+            let language_system = MenuItem::with_id(app, "language.system", if english { "Follow System" } else { "跟随系统" }, true, None::<&str>)?;
+            let language_zh = MenuItem::with_id(app, "language.zh-CN", if english { "Simplified Chinese" } else { "中文简体" }, true, None::<&str>)?;
+            let language_en = MenuItem::with_id(app, "language.en", "English", true, None::<&str>)?;
+            let language_menu = Submenu::with_items(
+                app,
+                if english { "Language" } else { "语言" },
+                true,
+                &[&language_system, &language_zh, &language_en],
+            )?;
             let view_menu = Submenu::with_items(
                 app,
-                "视图",
+                if english { "View" } else { "视图" },
                 true,
                 &[
-                    &editor,
-                    &preview,
-                    &split,
-                    &PredefinedMenuItem::separator(app)?,
-                    &theme_system,
-                    &theme_light,
-                    &theme_dark,
+                    &display_mode_menu,
+                    &theme_menu,
+                    &language_menu,
                 ],
             )?;
 
@@ -474,7 +657,9 @@ pub fn run() {
             open_external_file,
             read_local_image,
             initialize_spellchecker,
-            spellcheck_document
+            spellcheck_document,
+            get_language_preference,
+            set_language_preference
         ]);
 
     builder

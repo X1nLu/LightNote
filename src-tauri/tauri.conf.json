@@ -51,10 +51,20 @@
         ],
         "componentGroupRefs": [
           "LightNoteContextMenuComponents"
-        ]
+        ],
+        "language": {
+          "en-US": {
+            "localePath": "installer/en-US.wxl"
+          },
+          "zh-CN": {
+            "localePath": "installer/zh-CN.wxl"
+          }
+        }
       },
       "nsis": {
         "installMode": "currentUser",
+        "displayLanguageSelector": true,
+        "languages": ["English", "SimpChinese"],
         "template": "installer/nsis-template.nsi",
         "installerHooks": "installer/nsis-hooks.nsh"
       }

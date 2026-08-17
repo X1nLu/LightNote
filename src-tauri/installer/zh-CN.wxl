@@ -1,0 +1,18 @@
+<WixLocalization Culture="zh-cn" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="TauriLanguage">2052</String>
+  <String Id="TauriCodepage">936</String>
+  <String Id="LaunchApp">启动 LightNote</String>
+  <String Id="DowngradeErrorMessage">系统中已经安装了更新版本的 LightNote。</String>
+  <String Id="PathEnvVarFeature">将 LightNote 可执行文件的安装位置添加到 PATH 系统环境变量，以便从任意位置调用 LightNote。</String>
+  <String Id="InstallAppFeature">安装 LightNote。</String>
+  <String Id="AppRuns">运行 LightNote</String>
+  <String Id="MarkdownFile">Markdown 文件</String>
+  <String Id="TextFile">文本文件</String>
+  <String Id="OpenWith">使用 LightNote 打开</String>
+  <String Id="UninstallApp">卸载 LightNote</String>
+  <String Id="ApplicationFeature">应用程序</String>
+  <String Id="ShortcutsFeature">快捷方式</String>
+  <String Id="PathFeature">PATH 环境变量</String>
+  <String Id="ExplorerFeature">Windows 资源管理器右键菜单</String>
+  <String Id="ExplorerFeatureDescription">为 .md、.markdown 和 .txt 文件添加“使用 LightNote 打开”</String>
+</WixLocalization>

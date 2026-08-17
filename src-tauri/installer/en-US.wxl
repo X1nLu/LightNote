@@ -1,0 +1,18 @@
+<WixLocalization Culture="en-us" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="TauriLanguage">1033</String>
+  <String Id="TauriCodepage">1252</String>
+  <String Id="LaunchApp">Launch LightNote</String>
+  <String Id="DowngradeErrorMessage">A newer version of LightNote is already installed.</String>
+  <String Id="PathEnvVarFeature">Add the install location of the LightNote executable to the PATH system environment variable. This allows the LightNote executable to be called from any location.</String>
+  <String Id="InstallAppFeature">Installs LightNote.</String>
+  <String Id="AppRuns">Runs LightNote</String>
+  <String Id="MarkdownFile">Markdown file</String>
+  <String Id="TextFile">Text file</String>
+  <String Id="OpenWith">Open with LightNote</String>
+  <String Id="UninstallApp">Uninstalls LightNote</String>
+  <String Id="ApplicationFeature">Application</String>
+  <String Id="ShortcutsFeature">Shortcuts</String>
+  <String Id="PathFeature">PATH Environment Variable</String>
+  <String Id="ExplorerFeature">Windows Explorer Context Menu</String>
+  <String Id="ExplorerFeatureDescription">Add 'Open with LightNote' for .md, .markdown and .txt files</String>
+</WixLocalization>

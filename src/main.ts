@@ -28,7 +28,131 @@ const editorRootEl = document.querySelector("#editor") as HTMLDivElement;
 const previewEl = document.querySelector("#preview") as HTMLDivElement;
 const splitDividerEl = document.querySelector("#split-divider") as HTMLDivElement;
 
-const INITIAL_TEXT = `# LightNote\n\n欢迎使用轻笺，一个轻量、离线优先的 Markdown 编辑器。\n\n- 支持打开和保存 Markdown 文件\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n\`\`\`mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Done]\n\`\`\`\n`;
+type LanguagePreference = "system" | "zh-CN" | "en";
+type AppLanguage = Exclude<LanguagePreference, "system">;
+
+const translations: Record<AppLanguage, Record<string, string>> = {
+  "zh-CN": {
+    languageLabel: "语言",
+    languageSystem: "跟随系统",
+    languageChinese: "中文简体",
+    languageEnglish: "English",
+    editor: "编辑",
+    preview: "预览",
+    resize: "调整编辑区与预览区宽度",
+    ready: "准备就绪",
+    restart: "语言设置已保存，请关闭并重新打开应用后生效",
+    spellingError: "可能的拼写错误: {word}",
+    spellcheckFailed: "拼写检查失败: {error}",
+    spellcheckInitFailed: "拼写检查初始化失败: {error}",
+    autosaved: "已自动保存: {path}",
+    saved: "已保存文件: {path}",
+    conflictPaused: "文件已被其他程序修改，已暂停自动保存",
+    saveFailed: "{operation}失败: {error}",
+    autoSave: "自动保存",
+    fileSave: "文件保存",
+    noFile: "未选择文件",
+    openFailed: "打开文件失败: {error}",
+    noSavePath: "未选择保存位置",
+    conflict: "文件已被其他程序修改。是否用当前编辑内容覆盖磁盘文件？",
+    conflictTitle: "文件冲突",
+    cancelSave: "已取消保存，磁盘文件未被覆盖",
+    fileSaveFailed: "文件保存失败: {error}",
+    readOnlyOpened: "已只读打开: {path}（源文件为只读）",
+    opened: "已打开: {path}",
+    launchFailed: "处理启动文件失败: {error}",
+    contextOpenFailed: "打开右键文件失败: {error}",
+    unsaved: "有未保存修改",
+    newDocument: "新建文档，尚未保存到文件",
+    initialText: "# LightNote\n\n欢迎使用轻笺，一个轻量、离线优先的 Markdown 编辑器。\n\n- 支持打开和保存 Markdown 文件\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n```mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Done]\n```\n",
+  },
+  en: {
+    languageLabel: "Language",
+    languageSystem: "Follow system",
+    languageChinese: "Simplified Chinese",
+    languageEnglish: "English",
+    editor: "Editor",
+    preview: "Preview",
+    resize: "Resize the editor and preview panels",
+    ready: "Ready",
+    restart: "Language saved. Close and reopen the app to apply it.",
+    spellingError: "Possible spelling error: {word}",
+    spellcheckFailed: "Spellcheck failed: {error}",
+    spellcheckInitFailed: "Spellcheck initialization failed: {error}",
+    autosaved: "Automatically saved: {path}",
+    saved: "Saved file: {path}",
+    conflictPaused: "The file was changed by another program. Autosave is paused.",
+    saveFailed: "{operation} failed: {error}",
+    autoSave: "Autosave",
+    fileSave: "File save",
+    noFile: "No file selected",
+    openFailed: "Failed to open file: {error}",
+    noSavePath: "No save location selected",
+    conflict: "The file was changed by another program. Overwrite it with the current editor content?",
+    conflictTitle: "File conflict",
+    cancelSave: "Save cancelled. The disk file was not overwritten.",
+    fileSaveFailed: "Failed to save file: {error}",
+    readOnlyOpened: "Opened read-only: {path} (the source file is read-only)",
+    opened: "Opened: {path}",
+    launchFailed: "Failed to process startup file: {error}",
+    contextOpenFailed: "Failed to open context-menu file: {error}",
+    unsaved: "Unsaved changes",
+    newDocument: "New document, not saved to a file",
+    initialText: "# LightNote\n\nWelcome to LightNote, a lightweight, offline-first Markdown editor.\n\n- Open and save Markdown files\n- KaTeX formulas\n- Mermaid diagrams\n\nInline formula: $E = mc^2$\n\nBlock formula:\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n```mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Done]\n```\n",
+  },
+};
+
+let currentLanguage: AppLanguage = "zh-CN";
+
+function resolveLanguage(preference: LanguagePreference): AppLanguage {
+  return preference === "system"
+    ? navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en"
+    : preference;
+}
+
+function translate(key: string, values: Record<string, string> = {}): string {
+  let message = translations[currentLanguage][key] ?? key;
+  for (const [name, value] of Object.entries(values)) {
+    message = message.split(`{${name}}`).join(value);
+  }
+  return message;
+}
+
+function applyLanguage(preference: LanguagePreference): void {
+  currentLanguage = resolveLanguage(preference);
+  document.documentElement.lang = currentLanguage;
+  document.title = currentLanguage === "en" ? "LightNote" : "LightNote - 轻笺";
+  document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
+    const key = element.dataset.i18n;
+    if (key) {
+      element.textContent = translate(key);
+    }
+  });
+  const divider = document.querySelector<HTMLElement>("#split-divider");
+  divider?.setAttribute("aria-label", translate("resize"));
+}
+
+async function initializeLanguage(): Promise<void> {
+  try {
+    const preference = await invoke<string>("get_language_preference");
+    if (preference === "system" || preference === "zh-CN" || preference === "en") {
+      applyLanguage(preference);
+      return;
+    }
+  } catch {
+    // Keep the Chinese fallback when the language preference cannot be read.
+  }
+  applyLanguage("system");
+}
+
+async function saveLanguagePreference(preference: LanguagePreference): Promise<void> {
+  try {
+    await invoke("set_language_preference", { language: preference });
+    setStatus(translate("restart"));
+  } catch (error) {
+    setStatus(String(error));
+  }
+}
 
 const markdownRenderer = new MarkdownIt({
   html: false,
@@ -184,7 +308,7 @@ const spellingIssueField = StateField.define<DecorationSet>({
         .map(({ from, to, word }) =>
           Decoration.mark({
             class: "cm-spelling-error",
-            attributes: { title: `可能的拼写错误: ${word}` },
+            attributes: { title: translate("spellingError", { word }) },
           }).range(from, to),
         );
       decorations = Decoration.set(ranges, true);
@@ -512,7 +636,7 @@ async function checkCurrentDocumentSpelling(): Promise<void> {
     }
     editorView.dispatch({ effects: setSpellingIssues.of(issues) });
   } catch (error) {
-    setStatus(`拼写检查失败: ${String(error)}`);
+    setStatus(translate("spellcheckFailed", { error: String(error) }));
   }
 }
 
@@ -529,7 +653,7 @@ async function initializeSpellchecker(): Promise<void> {
     spellcheckReady = true;
     queueSpellcheck();
   } catch (error) {
-    setStatus(`拼写检查初始化失败: ${String(error)}`);
+    setStatus(translate("spellcheckInitFailed", { error: String(error) }));
   }
 }
 
@@ -568,17 +692,20 @@ async function saveCurrentDocument(autoSave: boolean): Promise<void> {
     documentFingerprint = saved.fingerprint;
     if (getEditorContent() === content) {
       setDirtyState(false);
-      setStatus(autoSave ? `已自动保存: ${path}` : `已保存文件: ${path}`);
+      setStatus(translate(autoSave ? "autosaved" : "saved", { path }));
     } else {
       queueAutoSave();
     }
   } catch (error) {
     if (String(error).includes(EXTERNAL_CHANGE_ERROR)) {
       autoSavePausedForConflict = true;
-      setStatus("文件已被其他程序修改，已暂停自动保存");
+      setStatus(translate("conflictPaused"));
       return;
     }
-    setStatus(`${autoSave ? "自动保存" : "文件保存"}失败: ${String(error)}`);
+    setStatus(translate("saveFailed", {
+      operation: translate(autoSave ? "autoSave" : "fileSave"),
+      error: String(error),
+    }));
   }
 }
 
@@ -845,7 +972,7 @@ async function handleImportMarkdown(): Promise<void> {
     });
 
     if (!selected || Array.isArray(selected)) {
-      setStatus("未选择文件");
+      setStatus(translate("noFile"));
       return;
     }
 
@@ -854,7 +981,7 @@ async function handleImportMarkdown(): Promise<void> {
     });
     await applyOpenedExternalFile(opened);
   } catch (error) {
-    setStatus(`打开文件失败: ${String(error)}`);
+    setStatus(translate("openFailed", { error: String(error) }));
   }
 }
 
@@ -874,7 +1001,7 @@ async function handleSaveFile(): Promise<void> {
         ],
       });
       if (!path) {
-        setStatus("未选择保存位置");
+        setStatus(translate("noSavePath"));
         return;
       }
       expectedFingerprint = null;
@@ -889,11 +1016,11 @@ async function handleSaveFile(): Promise<void> {
         throw error;
       }
       const overwrite = await confirm(
-        "文件已被其他程序修改。是否用当前编辑内容覆盖磁盘文件？",
-        { title: "文件冲突", kind: "warning" },
+        translate("conflict"),
+        { title: translate("conflictTitle"), kind: "warning" },
       );
       if (!overwrite) {
-        setStatus("已取消保存，磁盘文件未被覆盖");
+        setStatus(translate("cancelSave"));
         return;
       }
       saved = await writeDocument(path, content, null, true);
@@ -904,9 +1031,9 @@ async function handleSaveFile(): Promise<void> {
     autoSavePausedForConflict = false;
     setDirtyState(false);
     setEditorReadOnly(false);
-    setStatus(`已保存文件: ${path}`);
+    setStatus(translate("saved", { path }));
   } catch (error) {
-    setStatus(`文件保存失败: ${String(error)}`);
+    setStatus(translate("fileSaveFailed", { error: String(error) }));
   }
 }
 
@@ -923,9 +1050,9 @@ async function applyOpenedExternalFile(opened: OpenedExternalFile): Promise<void
   setEditorReadOnly(opened.readOnly);
   await renderPreview(opened.content);
   if (opened.readOnly) {
-    setStatus(`已只读打开: ${opened.path}（源文件为只读）`);
+    setStatus(translate("readOnlyOpened", { path: opened.path }));
   } else {
-    setStatus(`已打开: ${opened.path}`);
+    setStatus(translate("opened", { path: opened.path }));
   }
 }
 
@@ -940,7 +1067,7 @@ async function consumePendingLaunchPath(): Promise<void> {
     });
     await applyOpenedExternalFile(opened);
   } catch (error) {
-    setStatus(`处理启动文件失败: ${String(error)}`);
+    setStatus(translate("launchFailed", { error: String(error) }));
   }
 }
 
@@ -952,7 +1079,7 @@ async function listenForCliFileOpenEvent(): Promise<void> {
       });
       await applyOpenedExternalFile(opened);
     } catch (error) {
-      setStatus(`打开右键文件失败: ${String(error)}`);
+      setStatus(translate("contextOpenFailed", { error: String(error) }));
     }
   });
 }
@@ -1007,6 +1134,15 @@ async function executeAppCommand(command: string): Promise<void> {
     case "view.theme.dark":
       applyTheme("dark");
       break;
+    case "language.system":
+      await saveLanguagePreference("system");
+      break;
+    case "language.zh-CN":
+      await saveLanguagePreference("zh-CN");
+      break;
+    case "language.en":
+      await saveLanguagePreference("en");
+      break;
   }
 }
 
@@ -1017,7 +1153,7 @@ async function listenForMenuActions(): Promise<void> {
 }
 
 async function initEditor(): Promise<void> {
-  const content = INITIAL_TEXT;
+  const content = translate("initialText");
   documentBaseDir = null;
   documentPath = null;
   documentReadOnly = false;
@@ -1043,7 +1179,7 @@ async function initEditor(): Promise<void> {
               syncPreviewToEditor(update.view);
             });
             setDirtyState(true);
-            setStatus("有未保存修改");
+            setStatus(translate("unsaved"));
             queueAutoSave();
             queueSpellcheck();
             return;
@@ -1059,13 +1195,14 @@ async function initEditor(): Promise<void> {
   });
 
   await renderPreview(content);
-  setStatus("新建文档，尚未保存到文件");
+  setStatus(translate("newDocument"));
 }
 
 window.addEventListener("DOMContentLoaded", () => {
   applyTheme(themePreference, false);
   setDisplayMode("editor");
   void (async () => {
+    await initializeLanguage();
     await initEditor();
     await consumePendingLaunchPath();
     await listenForCliFileOpenEvent();
