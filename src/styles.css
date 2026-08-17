@@ -64,60 +64,6 @@ body {
   color: var(--subtle);
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.menu-wrap {
-  position: relative;
-}
-
-.display-mode-float {
-  position: fixed;
-  right: 28px;
-  bottom: 58px;
-  z-index: 50;
-}
-
-#display-mode-btn {
-  min-width: 150px;
-  box-shadow: 0 8px 20px rgba(20, 18, 14, 0.14);
-}
-
-.display-mode-menu {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 8px);
-  min-width: 150px;
-  display: grid;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fffdf8;
-  box-shadow: 0 8px 22px rgba(20, 18, 14, 0.12);
-  z-index: 20;
-}
-
-.display-mode-menu[hidden] {
-  display: none;
-}
-
-.display-mode-menu button {
-  text-align: left;
-  border-radius: 8px;
-  width: 100%;
-}
-
-.display-mode-menu button.is-active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: #f2fbf9;
-}
-
 button {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -330,17 +276,12 @@ button:hover {
     min-height: calc(100vh - 16px);
   }
 
-  .display-mode-float {
-    right: 16px;
-    bottom: 52px;
-  }
 }
 
 @media print {
   .topbar,
   .editor-panel,
-  .status-bar,
-  .display-mode-float {
+  .status-bar {
     display: none !important;
   }
 

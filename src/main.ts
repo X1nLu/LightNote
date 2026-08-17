@@ -28,14 +28,6 @@ const editorRootEl = document.querySelector("#editor") as HTMLDivElement;
 const previewEl = document.querySelector("#preview") as HTMLDivElement;
 const splitDividerEl = document.querySelector("#split-divider") as HTMLDivElement;
 
-const displayModeBtn = document.querySelector("#display-mode-btn") as HTMLButtonElement;
-const displayModeMenuEl = document.querySelector("#display-mode-menu") as HTMLDivElement;
-const displayModeOptionBtns = Array.from(
-  document.querySelectorAll("[data-display-mode]"),
-) as HTMLButtonElement[];
-const openFileBtn = document.querySelector("#open-file-btn") as HTMLButtonElement;
-const saveFileBtn = document.querySelector("#save-file-btn") as HTMLButtonElement;
-
 const INITIAL_TEXT = `# LightNote\n\n欢迎使用轻笺，一个轻量、离线优先的 Markdown 编辑器。\n\n- 支持打开和保存 Markdown 文件\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n\`\`\`mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Done]\n\`\`\`\n`;
 
 const markdownRenderer = new MarkdownIt({
@@ -386,17 +378,6 @@ function setDisplayMode(mode: DisplayMode): void {
   appShellEl.classList.remove("mode-editor", "mode-preview", "mode-split");
   appShellEl.classList.add(`mode-${mode}`);
 
-  const labelMap: Record<DisplayMode, string> = {
-    editor: "显示模式（单栏编辑）",
-    preview: "显示模式（单栏预览）",
-    split: "显示模式（分栏）",
-  };
-  displayModeBtn.textContent = labelMap[mode];
-
-  for (const optionBtn of displayModeOptionBtns) {
-    optionBtn.classList.toggle("is-active", optionBtn.dataset.displayMode === mode);
-  }
-
   applySplitRatio();
 
   if (mode !== "editor" && editorView) {
@@ -406,26 +387,12 @@ function setDisplayMode(mode: DisplayMode): void {
   }
 }
 
-function closeDisplayModeMenu(): void {
-  displayModeMenuEl.hidden = true;
-  displayModeBtn.setAttribute("aria-expanded", "false");
-}
-
-function toggleDisplayModeMenu(): void {
-  const nextHidden = !displayModeMenuEl.hidden;
-  displayModeMenuEl.hidden = nextHidden;
-  displayModeBtn.setAttribute("aria-expanded", String(!nextHidden));
-}
-
 function setStatus(message: string): void {
   statusEl.textContent = message;
 }
 
 function setDirtyState(dirty: boolean): void {
-  saveFileBtn.setAttribute(
-    "aria-label",
-    dirty ? "保存文件（有未保存修改）" : "保存文件",
-  );
+  void dirty;
 }
 
 function cancelPendingAutoSave(): void {
@@ -1020,27 +987,6 @@ window.addEventListener("DOMContentLoaded", () => {
     await initializeSpellchecker();
   })();
 
-  displayModeBtn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleDisplayModeMenu();
-  });
-
-  for (const optionBtn of displayModeOptionBtns) {
-    optionBtn.addEventListener("click", () => {
-      const mode = optionBtn.dataset.displayMode as DisplayMode;
-      setDisplayMode(mode);
-      closeDisplayModeMenu();
-    });
-  }
-
-  openFileBtn.addEventListener("click", () => {
-    void handleImportMarkdown();
-  });
-
-  saveFileBtn.addEventListener("click", () => {
-    void handleSaveFile();
-  });
-
   previewEl.addEventListener("click", handlePreviewClick);
 
   splitDividerEl.addEventListener("pointerdown", handleSplitPointerDown);
@@ -1049,22 +995,26 @@ window.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("pointercancel", handleSplitPointerEnd);
   window.addEventListener("resize", applySplitRatio);
 
-  document.addEventListener("click", (event) => {
-    const target = event.target as Node;
-    if (!displayModeMenuEl.contains(target) && !displayModeBtn.contains(target)) {
-      closeDisplayModeMenu();
-    }
-  });
-
   document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+      const displayModeByKey: Record<string, DisplayMode> = {
+        "1": "editor",
+        "2": "preview",
+        "3": "split",
+      };
+      const mode = displayModeByKey[event.key];
+      if (mode) {
+        event.preventDefault();
+        setDisplayMode(mode);
+        return;
+      }
+    }
+
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       void handleSaveFile();
       return;
     }
 
-    if (event.key === "Escape") {
-      closeDisplayModeMenu();
-    }
   });
 });
