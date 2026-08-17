@@ -444,11 +444,22 @@ pub fn run() {
             let editor = MenuItem::with_id(app, "view.editor", "单栏编辑", true, Some("Ctrl+1"))?;
             let preview = MenuItem::with_id(app, "view.preview", "单栏预览", true, Some("Ctrl+2"))?;
             let split = MenuItem::with_id(app, "view.split", "分栏", true, Some("Ctrl+3"))?;
+            let theme_system = MenuItem::with_id(app, "view.theme.system", "主题：跟随系统", true, None::<&str>)?;
+            let theme_light = MenuItem::with_id(app, "view.theme.light", "主题：浅色", true, None::<&str>)?;
+            let theme_dark = MenuItem::with_id(app, "view.theme.dark", "主题：深色", true, None::<&str>)?;
             let view_menu = Submenu::with_items(
                 app,
                 "视图",
                 true,
-                &[&editor, &preview, &split],
+                &[
+                    &editor,
+                    &preview,
+                    &split,
+                    &PredefinedMenuItem::separator(app)?,
+                    &theme_system,
+                    &theme_light,
+                    &theme_dark,
+                ],
             )?;
 
             Menu::with_items(app, &[&file_menu, &edit_menu, &view_menu])

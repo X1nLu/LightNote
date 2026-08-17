@@ -5,6 +5,11 @@
   --text: #2a241d;
   --subtle: #665f55;
   --accent: #0f766e;
+  --button-bg: #ffffff;
+  --code-bg: #f1ede3;
+  --code-line: #e0d8c6;
+  --split-hover: #f2fbf9;
+  --image-error-bg: #f8f4eb;
 
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
   color: var(--text);
@@ -16,6 +21,25 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme="dark"] {
+  --bg: #20211f;
+  --panel-bg: #292b28;
+  --line: #454943;
+  --text: #d8d6ce;
+  --subtle: #a5a69d;
+  --accent: #a8c7b9;
+  --button-bg: #343732;
+  --code-bg: #242622;
+  --code-line: #454943;
+  --split-hover: #303932;
+  --image-error-bg: #2a2c28;
+  color-scheme: dark;
+  background:
+    radial-gradient(circle at 10% 10%, #30342f 0%, transparent 35%),
+    radial-gradient(circle at 90% 0%, #293634 0%, transparent 45%),
+    var(--bg);
 }
 
 * {
@@ -70,7 +94,7 @@ button {
   padding: 7px 12px;
   font-size: 0.86rem;
   color: var(--text);
-  background: #fff;
+  background: var(--button-bg);
   cursor: pointer;
 }
 
@@ -113,7 +137,7 @@ button:hover {
 .split-divider:hover::before,
 .is-resizing-split .split-divider::before {
   border-left-color: var(--accent);
-  background: #f2fbf9;
+  background: var(--split-hover);
 }
 
 .app-shell.mode-split .split-divider {
@@ -197,8 +221,8 @@ button:hover {
 }
 
 .markdown-body pre {
-  background: #f1ede3;
-  border: 1px solid #e0d8c6;
+  background: var(--code-bg);
+  border: 1px solid var(--code-line);
   border-radius: 8px;
   padding: 10px;
   overflow-x: auto;
@@ -206,7 +230,7 @@ button:hover {
 
 .markdown-body code {
   font-family: "JetBrains Mono", "Cascadia Code", monospace;
-  background: #f1ede3;
+  background: var(--code-bg);
   border-radius: 4px;
   padding: 2px 4px;
 }
@@ -237,7 +261,7 @@ button:hover {
 .markdown-body img.image-load-error {
   min-height: 32px;
   border: 1px dashed var(--line);
-  background: #f8f4eb;
+  background: var(--image-error-bg);
 }
 
 .status-bar {

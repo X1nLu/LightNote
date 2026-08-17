@@ -72,14 +72,89 @@ markdownRenderer.renderer.rules.fence = (
 let mermaidLib: typeof import("mermaid") | null = null;
 type DisplayMode = "editor" | "preview" | "split";
 const editableCompartment = new Compartment();
+const themeCompartment = new Compartment();
 const SPLIT_RATIO_STORAGE_KEY = "lightnote.split-pane-ratio";
 const DOCUMENT_BASE_DIR_STORAGE_KEY = "lightnote.document-base-dir";
+const THEME_STORAGE_KEY = "lightnote.theme";
 const DEFAULT_SPLIT_RATIO = 0.5;
 const MIN_SPLIT_PANEL_WIDTH = 280;
 const SPLIT_DIVIDER_WIDTH = 10;
 const AUTO_SAVE_DELAY_MS = 1000;
 const EXTERNAL_CHANGE_ERROR = "FILE_CHANGED_EXTERNALLY";
 const SPELLCHECK_DELAY_MS = 450;
+type ThemePreference = "system" | "light" | "dark";
+type ResolvedTheme = Exclude<ThemePreference, "system">;
+
+let themePreference = loadThemePreference();
+let resolvedTheme: ResolvedTheme = resolveTheme(themePreference);
+
+function loadThemePreference(): ThemePreference {
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return storedTheme === "light" || storedTheme === "dark" ? storedTheme : "system";
+  } catch {
+    return "system";
+  }
+}
+
+function resolveTheme(preference: ThemePreference): ResolvedTheme {
+  return preference === "system"
+    ? window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light"
+    : preference;
+}
+
+function persistThemePreference(): void {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, themePreference);
+  } catch {
+    return;
+  }
+}
+
+function getEditorTheme(): ReturnType<typeof EditorView.theme> {
+  const dark = resolvedTheme === "dark";
+  return EditorView.theme(
+    {
+      "&": { color: dark ? "#d8d6ce" : "#2a241d", backgroundColor: dark ? "#20211f" : "#fefcf8" },
+      ".cm-content": { caretColor: dark ? "#a8c7b9" : "#0f766e" },
+      ".cm-cursor, .cm-dropCursor": { borderLeftColor: dark ? "#a8c7b9" : "#0f766e" },
+      ".cm-selectionBackground, ::selection": { backgroundColor: dark ? "#3b4a45" : "#d6ebe5" },
+      ".cm-gutters": { color: dark ? "#8e9189" : "#7a746b", backgroundColor: dark ? "#1c1d1b" : "#f8f7f2", border: "none" },
+      ".cm-activeLine": { backgroundColor: dark ? "#292b28" : "#faf8f1" },
+      ".cm-activeLineGutter": { backgroundColor: dark ? "#292b28" : "#f0eee6" },
+      ".cm-searchMatch": { backgroundColor: dark ? "#625b38" : "#f4df9f" },
+      ".cm-searchMatch-selected": { backgroundColor: dark ? "#8b7b3e" : "#e7c55b" },
+    },
+    { dark },
+  );
+}
+
+function configureMermaidTheme(): void {
+  mermaidLib?.default.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    theme: resolvedTheme === "dark" ? "dark" : "neutral",
+  });
+}
+
+function applyTheme(preference: ThemePreference, persist = true): void {
+  themePreference = preference;
+  resolvedTheme = resolveTheme(preference);
+  document.documentElement.dataset.theme = resolvedTheme;
+  document.documentElement.dataset.themePreference = preference;
+  if (persist) {
+    persistThemePreference();
+  }
+  if (editorView) {
+    editorView.dispatch({ effects: themeCompartment.reconfigure(getEditorTheme()) });
+  }
+  configureMermaidTheme();
+  if (editorView && !appShellEl.classList.contains("mode-editor")) {
+    void renderPreview(getEditorContent());
+  }
+}
 
 const documentSearchKeymap = keymap.of([
   { key: "Mod-f", run: openSearchPanel },
@@ -144,7 +219,7 @@ async function getMermaid() {
   lib.default.initialize({
     startOnLoad: false,
     securityLevel: "strict",
-    theme: "neutral",
+    theme: resolvedTheme === "dark" ? "dark" : "neutral",
   });
   mermaidLib = lib;
   return lib;
@@ -923,6 +998,15 @@ async function executeAppCommand(command: string): Promise<void> {
     case "view.split":
       setDisplayMode("split");
       break;
+    case "view.theme.system":
+      applyTheme("system");
+      break;
+    case "view.theme.light":
+      applyTheme("light");
+      break;
+    case "view.theme.dark":
+      applyTheme("dark");
+      break;
   }
 }
 
@@ -950,6 +1034,7 @@ async function initEditor(): Promise<void> {
         documentSearchKeymap,
         spellingIssueField,
         EditorView.lineWrapping,
+        themeCompartment.of(getEditorTheme()),
         editableCompartment.of(EditorView.editable.of(true)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -978,6 +1063,7 @@ async function initEditor(): Promise<void> {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  applyTheme(themePreference, false);
   setDisplayMode("editor");
   void (async () => {
     await initEditor();
@@ -994,6 +1080,11 @@ window.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("pointerup", handleSplitPointerEnd);
   document.addEventListener("pointercancel", handleSplitPointerEnd);
   window.addEventListener("resize", applySplitRatio);
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (themePreference === "system") {
+      applyTheme("system", false);
+    }
+  });
 
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && !event.altKey) {
