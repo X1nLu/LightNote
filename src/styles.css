@@ -228,6 +228,14 @@ button:hover {
   line-height: 1.7;
 }
 
+.cm-spelling-error {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: #c2413b;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
 .markdown-body {
   padding: 16px 18px;
   line-height: 1.72;

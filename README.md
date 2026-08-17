@@ -10,7 +10,11 @@
 - KaTeX：支持行内数学和块级数学预览。
 - GFM 表格和代码块：单栏直接编辑源码，分栏预览完整渲染。
 - Mermaid：在分栏预览中异步渲染流程图。
-- 文件操作：打开并手动保存 `.md`、`.markdown` 和 `.txt` 文件，支持 `Ctrl+S`。
+- 原生菜单与快捷键：通过 Tauri 原生“文件、编辑、视图”菜单操作当前文档，支持常用编辑与视图快捷键。
+- 自动保存：已打开的可写文件停止编辑 1 秒后自动保存；新文档首次仍需手动选择保存位置。
+- 当前文档搜索：使用 CodeMirror 查找/替换，支持 `Ctrl+F`、`Ctrl+H`、`F3` 和 `Shift+F3`。
+- 英文拼写检查：Rust 侧使用 Hunspell 兼容词典检查当前文档，并在编辑器中标记可能的拼写错误。
+- 文件操作：打开和保存 `.md`、`.markdown` 和 `.txt` 文件，支持 `Ctrl+S`。
 - 离线优先：编辑与本地保存不依赖远程服务。
 - Windows 集成：安装时可选择添加右键菜单；支持文件关联后双击或右键直接用 LightNote 打开。
 
@@ -24,12 +28,15 @@ flowchart LR
 	MD --> Preview[分栏预览]
 	UI --> Tauri[Tauri 2 Commands]
 	Tauri --> Files[Native File System]
+	UI --> Spell[Current Document Spellcheck]
+	Spell --> Tauri
 ```
 
 | 层 | 主要技术 | 职责 |
 | --- | --- | --- |
-| 桌面容器 | Tauri 2、Rust | 启动应用、文件系统访问、原生能力权限。 |
-| 编辑器 | CodeMirror 6 | Markdown 源码编辑。 |
+| 桌面容器 | Tauri 2、Rust | 启动应用、原生菜单、全局聚焦快捷键和原子文件写入。 |
+| 编辑器 | CodeMirror 6 | Markdown 源码编辑、当前文档查找替换和拼写标记。 |
+| 拼写检查 | spellbook、dictionary-en | 使用嵌入式英语 Hunspell 兼容词典检查当前文档。 |
 | 渲染 | markdown-it、KaTeX、Mermaid、DOMPurify | 预览和内容清理。 |
 | 前端 | Vite、Vanilla TypeScript | 视图切换、文件导入保存和菜单交互。 |
 
@@ -59,7 +66,23 @@ flowchart LR
 
 - “打开文件”：导入 `.md`、`.markdown` 或 `.txt`。
 - “保存文件”：将当前内容写回已打开的可写文件；只读文件或新文档会弹出保存位置。也可以使用 `Ctrl+S`。
+- 自动保存：已打开的可写文件在停止编辑 1 秒后自动写回。若磁盘文件已被其他程序修改，自动保存会暂停，手动保存时可选择是否覆盖。
+- 当前文档查找：`Ctrl+F` 查找，`Ctrl+H` 查找和替换，`F3`/`Shift+F3` 跳转到下一个/上一个匹配。
+- 全局聚焦：`Ctrl+Shift+Space` 可在应用失焦或最小化时唤起 LightNote；若快捷键已被其他应用占用，LightNote 仍会正常启动。
 - 资源管理器右键：安装后可在 `.md`、`.markdown`、`.txt` 文件上直接选择 “Open with LightNote”。
+
+### 快捷键
+
+| 快捷键 | 操作范围 | 功能 |
+| --- | --- | --- |
+| `Ctrl+O` | 当前窗口 | 打开文件 |
+| `Ctrl+S` | 当前文件 | 手动保存 |
+| `Ctrl+F` | 当前文档 | 查找 |
+| `Ctrl+H` | 当前文档 | 查找和替换 |
+| `F3` / `Shift+F3` | 当前文档 | 下一个/上一个匹配 |
+| `Ctrl+Z` / `Ctrl+Y` | 当前文档 | 撤销/重做 |
+| `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | 当前窗口 | 单栏编辑/单栏预览/分栏 |
+| `Ctrl+Shift+Space` | 系统全局 | 唤起并聚焦 LightNote |
 
 ## 开发
 
@@ -189,9 +212,11 @@ cargo build --manifest-path src-tauri/Cargo.toml --release
 
 ## 数据与隐私
 
-LightNote 只在用户明确保存时写回外部文件，不会在应用数据目录维护文档副本。未保存的新文档在应用关闭后不会保留，请自行备份重要文档。
+LightNote 只处理当前打开的单个文件，不扫描目录，不维护文档库或全文索引，也不会在应用数据目录保存文档副本。已打开的可写文件会自动写回；未指定保存位置的新文档在应用关闭后不会保留。
 
 ## 已知限制
 
 - 当前只编辑一个活动文档，不提供多文档列表或历史版本。
+- 搜索和拼写检查仅针对当前文档，不提供目录搜索或应用级索引。
+- 拼写检查首版使用英语词典，只标记可能的错误，不提供替换建议或用户词典。
 - Mermaid 仅在分栏预览中渲染；单栏保持 Mermaid 围栏源码，便于编辑。

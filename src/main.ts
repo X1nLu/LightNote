@@ -1,12 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
 import markdownItKatex from "markdown-it-katex";
 import DOMPurify from "dompurify";
 import { basicSetup } from "codemirror";
-import { Compartment, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { redo, undo } from "@codemirror/commands";
+import {
+  Compartment,
+  EditorState,
+  StateEffect,
+  StateField,
+} from "@codemirror/state";
+import {
+  closeSearchPanel,
+  findNext,
+  findPrevious,
+  openSearchPanel,
+} from "@codemirror/search";
+import { Decoration, DecorationSet, EditorView, keymap } from "@codemirror/view";
 import "katex/dist/katex.min.css";
 
 const appShellEl = document.querySelector(".app-shell") as HTMLElement;
@@ -73,12 +85,58 @@ const DOCUMENT_BASE_DIR_STORAGE_KEY = "lightnote.document-base-dir";
 const DEFAULT_SPLIT_RATIO = 0.5;
 const MIN_SPLIT_PANEL_WIDTH = 280;
 const SPLIT_DIVIDER_WIDTH = 10;
+const AUTO_SAVE_DELAY_MS = 1000;
+const EXTERNAL_CHANGE_ERROR = "FILE_CHANGED_EXTERNALLY";
+const SPELLCHECK_DELAY_MS = 450;
+
+const documentSearchKeymap = keymap.of([
+  { key: "Mod-f", run: openSearchPanel },
+  { key: "Mod-h", run: openSearchPanel },
+  { key: "F3", run: findNext },
+  { key: "Shift-F3", run: findPrevious },
+  { key: "Escape", run: closeSearchPanel },
+]);
+
+interface SpellingIssue {
+  from: number;
+  to: number;
+  word: string;
+}
+
+const setSpellingIssues = StateEffect.define<SpellingIssue[]>();
+const spellingIssueField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(decorations, transaction) {
+    decorations = decorations.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (!effect.is(setSpellingIssues)) {
+        continue;
+      }
+      const ranges = effect.value
+        .filter(({ from, to }) => from >= 0 && to > from && to <= transaction.state.doc.length)
+        .map(({ from, to, word }) =>
+          Decoration.mark({
+            class: "cm-spelling-error",
+            attributes: { title: `可能的拼写错误: ${word}` },
+          }).range(from, to),
+        );
+      decorations = Decoration.set(ranges, true);
+    }
+    return decorations;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 interface OpenedExternalFile {
   path: string;
   content: string;
   readOnly: boolean;
   baseDir: string;
+  fingerprint: string;
+}
+
+interface SavedExternalFile {
+  fingerprint: string;
 }
 
 interface LocalImage {
@@ -106,6 +164,13 @@ let previewRenderId = 0;
 let documentBaseDir: string | null = loadDocumentBaseDir();
 let documentPath: string | null = null;
 let documentReadOnly = false;
+let documentFingerprint: string | null = null;
+let autoSaveTimer: number | null = null;
+let saveQueue: Promise<void> = Promise.resolve();
+let autoSavePausedForConflict = false;
+let spellcheckReady = false;
+let spellcheckTimer: number | null = null;
+let spellcheckRequestId = 0;
 let previewObjectUrls: string[] = [];
 let splitRatio = loadSplitRatio();
 let activeSplitPointerId: number | null = null;
@@ -361,6 +426,118 @@ function setDirtyState(dirty: boolean): void {
     "aria-label",
     dirty ? "保存文件（有未保存修改）" : "保存文件",
   );
+}
+
+function cancelPendingAutoSave(): void {
+  if (autoSaveTimer !== null) {
+    window.clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+  }
+}
+
+function queueAutoSave(): void {
+  cancelPendingAutoSave();
+  if (!documentPath || documentReadOnly || autoSavePausedForConflict) {
+    return;
+  }
+
+  autoSaveTimer = window.setTimeout(() => {
+    autoSaveTimer = null;
+    void saveCurrentDocument(true);
+  }, AUTO_SAVE_DELAY_MS);
+}
+
+function queueSpellcheck(): void {
+  if (!spellcheckReady) {
+    return;
+  }
+  if (spellcheckTimer !== null) {
+    window.clearTimeout(spellcheckTimer);
+  }
+  spellcheckTimer = window.setTimeout(() => {
+    spellcheckTimer = null;
+    void checkCurrentDocumentSpelling();
+  }, SPELLCHECK_DELAY_MS);
+}
+
+async function checkCurrentDocumentSpelling(): Promise<void> {
+  const requestId = ++spellcheckRequestId;
+  const content = getEditorContent();
+  try {
+    const issues = await invoke<SpellingIssue[]>("spellcheck_document", { content });
+    if (requestId !== spellcheckRequestId || getEditorContent() !== content) {
+      return;
+    }
+    editorView.dispatch({ effects: setSpellingIssues.of(issues) });
+  } catch (error) {
+    setStatus(`拼写检查失败: ${String(error)}`);
+  }
+}
+
+async function initializeSpellchecker(): Promise<void> {
+  try {
+    const [aff, dic] = await Promise.all([
+      import("../node_modules/dictionary-en/index.aff?raw"),
+      import("../node_modules/dictionary-en/index.dic?raw"),
+    ]);
+    await invoke("initialize_spellchecker", {
+      aff: aff.default,
+      dic: dic.default,
+    });
+    spellcheckReady = true;
+    queueSpellcheck();
+  } catch (error) {
+    setStatus(`拼写检查初始化失败: ${String(error)}`);
+  }
+}
+
+function writeDocument(
+  path: string,
+  content: string,
+  expectedFingerprint: string | null,
+  force: boolean,
+): Promise<SavedExternalFile> {
+  let result: SavedExternalFile | undefined;
+  const operation = saveQueue.catch(() => undefined).then(async () => {
+    result = await invoke<SavedExternalFile>("save_external_file", {
+      path,
+      content,
+      expectedFingerprint,
+      force,
+    });
+  });
+  saveQueue = operation;
+  return operation.then(() => result as SavedExternalFile);
+}
+
+async function saveCurrentDocument(autoSave: boolean): Promise<void> {
+  const path = documentPath;
+  if (!path || documentReadOnly) {
+    return;
+  }
+
+  const content = getEditorContent();
+  const expectedFingerprint = documentFingerprint;
+  try {
+    const saved = await writeDocument(path, content, expectedFingerprint, false);
+    if (documentPath !== path) {
+      return;
+    }
+    documentFingerprint = saved.fingerprint;
+    if (getEditorContent() === content) {
+      setDirtyState(false);
+      setStatus(autoSave ? `已自动保存: ${path}` : `已保存文件: ${path}`);
+    } else {
+      queueAutoSave();
+    }
+  } catch (error) {
+    if (String(error).includes(EXTERNAL_CHANGE_ERROR)) {
+      autoSavePausedForConflict = true;
+      setStatus("文件已被其他程序修改，已暂停自动保存");
+      return;
+    }
+    setStatus(`${autoSave ? "自动保存" : "文件保存"}失败: ${String(error)}`);
+  }
 }
 
 function setEditorReadOnly(readOnly: boolean): void {
@@ -641,7 +818,9 @@ async function handleImportMarkdown(): Promise<void> {
 
 async function handleSaveFile(): Promise<void> {
   try {
+    cancelPendingAutoSave();
     let path = documentPath;
+    let expectedFingerprint = documentFingerprint;
     if (!path || documentReadOnly) {
       path = await save({
         defaultPath: path ?? "note.md",
@@ -656,14 +835,31 @@ async function handleSaveFile(): Promise<void> {
         setStatus("未选择保存位置");
         return;
       }
+      expectedFingerprint = null;
     }
 
-    await invoke("save_external_file", {
-      path,
-      content: getEditorContent(),
-    });
+    const content = getEditorContent();
+    let saved: SavedExternalFile;
+    try {
+      saved = await writeDocument(path, content, expectedFingerprint, false);
+    } catch (error) {
+      if (!String(error).includes(EXTERNAL_CHANGE_ERROR)) {
+        throw error;
+      }
+      const overwrite = await confirm(
+        "文件已被其他程序修改。是否用当前编辑内容覆盖磁盘文件？",
+        { title: "文件冲突", kind: "warning" },
+      );
+      if (!overwrite) {
+        setStatus("已取消保存，磁盘文件未被覆盖");
+        return;
+      }
+      saved = await writeDocument(path, content, null, true);
+    }
     documentPath = path;
     documentReadOnly = false;
+    documentFingerprint = saved.fingerprint;
+    autoSavePausedForConflict = false;
     setDirtyState(false);
     setEditorReadOnly(false);
     setStatus(`已保存文件: ${path}`);
@@ -673,8 +869,11 @@ async function handleSaveFile(): Promise<void> {
 }
 
 async function applyOpenedExternalFile(opened: OpenedExternalFile): Promise<void> {
+  cancelPendingAutoSave();
   documentPath = opened.path;
   documentReadOnly = opened.readOnly;
+  documentFingerprint = opened.fingerprint;
+  autoSavePausedForConflict = false;
   documentBaseDir = opened.baseDir;
   persistDocumentBaseDir(documentBaseDir);
   replaceEditorText(opened.content);
@@ -716,11 +915,63 @@ async function listenForCliFileOpenEvent(): Promise<void> {
   });
 }
 
+function runEditorCommand(command: (view: EditorView) => boolean): void {
+  if (!editorView) {
+    return;
+  }
+  command(editorView);
+  editorView.focus();
+}
+
+async function executeAppCommand(command: string): Promise<void> {
+  switch (command) {
+    case "file.open":
+      await handleImportMarkdown();
+      break;
+    case "file.save":
+      await handleSaveFile();
+      break;
+    case "edit.undo":
+      runEditorCommand(undo);
+      break;
+    case "edit.redo":
+      runEditorCommand(redo);
+      break;
+    case "edit.find":
+    case "edit.replace":
+      runEditorCommand(openSearchPanel);
+      break;
+    case "edit.find_next":
+      runEditorCommand(findNext);
+      break;
+    case "edit.find_previous":
+      runEditorCommand(findPrevious);
+      break;
+    case "view.editor":
+      setDisplayMode("editor");
+      break;
+    case "view.preview":
+      setDisplayMode("preview");
+      break;
+    case "view.split":
+      setDisplayMode("split");
+      break;
+  }
+}
+
+async function listenForMenuActions(): Promise<void> {
+  await listen<string>("menu-action", (event) => {
+    void executeAppCommand(event.payload);
+  });
+}
+
 async function initEditor(): Promise<void> {
   const content = INITIAL_TEXT;
   documentBaseDir = null;
   documentPath = null;
   documentReadOnly = false;
+  documentFingerprint = null;
+  autoSavePausedForConflict = false;
   setDirtyState(false);
   persistDocumentBaseDir(null);
 
@@ -729,6 +980,8 @@ async function initEditor(): Promise<void> {
       doc: content,
       extensions: [
         basicSetup,
+        documentSearchKeymap,
+        spellingIssueField,
         EditorView.lineWrapping,
         editableCompartment.of(EditorView.editable.of(true)),
         EditorView.updateListener.of((update) => {
@@ -739,6 +992,8 @@ async function initEditor(): Promise<void> {
             });
             setDirtyState(true);
             setStatus("有未保存修改");
+            queueAutoSave();
+            queueSpellcheck();
             return;
           }
 
@@ -761,6 +1016,8 @@ window.addEventListener("DOMContentLoaded", () => {
     await initEditor();
     await consumePendingLaunchPath();
     await listenForCliFileOpenEvent();
+    await listenForMenuActions();
+    await initializeSpellchecker();
   })();
 
   displayModeBtn.addEventListener("click", (event) => {
