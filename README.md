@@ -10,8 +10,7 @@
 - KaTeX：支持行内数学和块级数学预览。
 - GFM 表格和代码块：单栏直接编辑源码，分栏预览完整渲染。
 - Mermaid：在分栏预览中异步渲染流程图。
-- 自动保存：内容保存至本地 SQLite 数据库，应用重启后恢复。
-- 文件操作：打开 `.md`、`.markdown` 和 `.txt` 文件。
+- 文件操作：打开并手动保存 `.md`、`.markdown` 和 `.txt` 文件，支持 `Ctrl+S`。
 - 离线优先：编辑与本地保存不依赖远程服务。
 - Windows 集成：安装时可选择添加右键菜单；支持文件关联后双击或右键直接用 LightNote 打开。
 
@@ -24,16 +23,15 @@ flowchart LR
 	CM --> MD[markdown-it]
 	MD --> Preview[分栏预览]
 	UI --> Tauri[Tauri 2 Commands]
-	Tauri --> SQLite[(SQLite)]
-	UI --> Files[Dialog / File System]
+	Tauri --> Files[Native File System]
 ```
 
 | 层 | 主要技术 | 职责 |
 | --- | --- | --- |
-| 桌面容器 | Tauri 2、Rust | 启动应用、SQLite 持久化、原生能力权限。 |
+| 桌面容器 | Tauri 2、Rust | 启动应用、文件系统访问、原生能力权限。 |
 | 编辑器 | CodeMirror 6 | Markdown 源码编辑。 |
 | 渲染 | markdown-it、KaTeX、Mermaid、DOMPurify | 预览和内容清理。 |
-| 前端 | Vite、Vanilla TypeScript | 视图切换、自动保存、文件导入和菜单交互。 |
+| 前端 | Vite、Vanilla TypeScript | 视图切换、文件导入保存和菜单交互。 |
 
 ## 使用方法
 
@@ -60,6 +58,7 @@ flowchart LR
 ### 文件操作
 
 - “打开文件”：导入 `.md`、`.markdown` 或 `.txt`。
+- “保存文件”：将当前内容写回已打开的可写文件；只读文件或新文档会弹出保存位置。也可以使用 `Ctrl+S`。
 - 资源管理器右键：安装后可在 `.md`、`.markdown`、`.txt` 文件上直接选择 “Open with LightNote”。
 
 ## 开发
@@ -175,10 +174,10 @@ cargo build --manifest-path src-tauri/Cargo.toml --release
 ```text
 .
 ├── src/
-│   ├── main.ts          # 编辑器、预览、文件操作和自动保存
+│   ├── main.ts          # 编辑器、预览和文件操作
 │   └── styles.css       # 应用与编辑器样式
 ├── src-tauri/
-│   ├── src/lib.rs       # Tauri 命令与 SQLite 初始化
+│   ├── src/lib.rs       # Tauri 命令与文件操作
 │   ├── capabilities/    # 对话框权限
 │   └── tauri.conf.json  # 桌面应用配置
 ├── scripts/
@@ -190,9 +189,9 @@ cargo build --manifest-path src-tauri/Cargo.toml --release
 
 ## 数据与隐私
 
-LightNote 将当前文档保存到应用数据目录下的 SQLite 数据库中。打开外部文件不会自动覆盖源文件，编辑内容会自动保存到应用数据库。请自行备份重要文档。
+LightNote 只在用户明确保存时写回外部文件，不会在应用数据目录维护文档副本。未保存的新文档在应用关闭后不会保留，请自行备份重要文档。
 
 ## 已知限制
 
-- 当前 SQLite 模型只保存一个活动文档，不提供多文档列表或历史版本。
+- 当前只编辑一个活动文档，不提供多文档列表或历史版本。
 - Mermaid 仅在分栏预览中渲染；单栏保持 Mermaid 围栏源码，便于编辑。

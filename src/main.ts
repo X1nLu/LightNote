@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
 import markdownItKatex from "markdown-it-katex";
 import DOMPurify from "dompurify";
@@ -22,8 +22,9 @@ const displayModeOptionBtns = Array.from(
   document.querySelectorAll("[data-display-mode]"),
 ) as HTMLButtonElement[];
 const openFileBtn = document.querySelector("#open-file-btn") as HTMLButtonElement;
+const saveFileBtn = document.querySelector("#save-file-btn") as HTMLButtonElement;
 
-const INITIAL_TEXT = `# LightNote\n\n欢迎使用轻笺，一个轻量、离线优先的 Markdown 编辑器。\n\n- 支持自动保存到 SQLite\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n\`\`\`mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Done]\n\`\`\`\n`;
+const INITIAL_TEXT = `# LightNote\n\n欢迎使用轻笺，一个轻量、离线优先的 Markdown 编辑器。\n\n- 支持打开和保存 Markdown 文件\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n\`\`\`mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Done]\n\`\`\`\n`;
 
 const markdownRenderer = new MarkdownIt({
   html: false,
@@ -100,10 +101,11 @@ async function getMermaid() {
 }
 
 let editorView: EditorView;
-let saveTimer: number | null = null;
 let mermaidRenderId = 0;
 let previewRenderId = 0;
 let documentBaseDir: string | null = loadDocumentBaseDir();
+let documentPath: string | null = null;
+let documentReadOnly = false;
 let previewObjectUrls: string[] = [];
 let splitRatio = loadSplitRatio();
 let activeSplitPointerId: number | null = null;
@@ -354,6 +356,13 @@ function setStatus(message: string): void {
   statusEl.textContent = message;
 }
 
+function setDirtyState(dirty: boolean): void {
+  saveFileBtn.setAttribute(
+    "aria-label",
+    dirty ? "保存文件（有未保存修改）" : "保存文件",
+  );
+}
+
 function setEditorReadOnly(readOnly: boolean): void {
   editorView.dispatch({
     effects: editableCompartment.reconfigure(EditorView.editable.of(!readOnly)),
@@ -391,32 +400,6 @@ async function renderMermaidNodes(container: HTMLElement, renderId: number): Pro
 
 function getEditorContent(): string {
   return editorView.state.doc.toString();
-}
-
-async function persistDocument(content: string): Promise<void> {
-  try {
-    await invoke("save_document", { content });
-    setStatus(`已保存 ${new Date().toLocaleTimeString()}`);
-  } catch (error) {
-    setStatus(`保存失败: ${String(error)}`);
-  }
-}
-
-function queueSave(content: string): void {
-  setStatus("保存中...");
-  if (saveTimer !== null) {
-    window.clearTimeout(saveTimer);
-  }
-  saveTimer = window.setTimeout(() => {
-    void persistDocument(content);
-  }, 450);
-}
-
-function cancelQueuedSave(): void {
-  if (saveTimer !== null) {
-    window.clearTimeout(saveTimer);
-    saveTimer = null;
-  }
 }
 
 function revokePreviewObjectUrls(): void {
@@ -656,14 +639,48 @@ async function handleImportMarkdown(): Promise<void> {
   }
 }
 
+async function handleSaveFile(): Promise<void> {
+  try {
+    let path = documentPath;
+    if (!path || documentReadOnly) {
+      path = await save({
+        defaultPath: path ?? "note.md",
+        filters: [
+          {
+            name: "Markdown",
+            extensions: ["md", "markdown", "txt"],
+          },
+        ],
+      });
+      if (!path) {
+        setStatus("未选择保存位置");
+        return;
+      }
+    }
+
+    await invoke("save_external_file", {
+      path,
+      content: getEditorContent(),
+    });
+    documentPath = path;
+    documentReadOnly = false;
+    setDirtyState(false);
+    setEditorReadOnly(false);
+    setStatus(`已保存文件: ${path}`);
+  } catch (error) {
+    setStatus(`文件保存失败: ${String(error)}`);
+  }
+}
+
 async function applyOpenedExternalFile(opened: OpenedExternalFile): Promise<void> {
-  cancelQueuedSave();
+  documentPath = opened.path;
+  documentReadOnly = opened.readOnly;
   documentBaseDir = opened.baseDir;
   persistDocumentBaseDir(documentBaseDir);
   replaceEditorText(opened.content);
+  setDirtyState(false);
   setEditorReadOnly(opened.readOnly);
   await renderPreview(opened.content);
-  await persistDocument(opened.content);
   if (opened.readOnly) {
     setStatus(`已只读打开: ${opened.path}（源文件为只读）`);
   } else {
@@ -700,12 +717,12 @@ async function listenForCliFileOpenEvent(): Promise<void> {
 }
 
 async function initEditor(): Promise<void> {
-  const storedContent = await invoke<string>("load_document");
-  const content = storedContent || INITIAL_TEXT;
-  if (!storedContent) {
-    documentBaseDir = null;
-    persistDocumentBaseDir(null);
-  }
+  const content = INITIAL_TEXT;
+  documentBaseDir = null;
+  documentPath = null;
+  documentReadOnly = false;
+  setDirtyState(false);
+  persistDocumentBaseDir(null);
 
   editorView = new EditorView({
     state: EditorState.create({
@@ -720,7 +737,8 @@ async function initEditor(): Promise<void> {
             void renderPreview(latest).then(() => {
               syncPreviewToEditor(update.view);
             });
-            queueSave(latest);
+            setDirtyState(true);
+            setStatus("有未保存修改");
             return;
           }
 
@@ -734,7 +752,7 @@ async function initEditor(): Promise<void> {
   });
 
   await renderPreview(content);
-  setStatus("已从 SQLite 恢复文档");
+  setStatus("新建文档，尚未保存到文件");
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -762,6 +780,10 @@ window.addEventListener("DOMContentLoaded", () => {
     void handleImportMarkdown();
   });
 
+  saveFileBtn.addEventListener("click", () => {
+    void handleSaveFile();
+  });
+
   previewEl.addEventListener("click", handlePreviewClick);
 
   splitDividerEl.addEventListener("pointerdown", handleSplitPointerDown);
@@ -778,6 +800,12 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      void handleSaveFile();
+      return;
+    }
+
     if (event.key === "Escape") {
       closeDisplayModeMenu();
     }

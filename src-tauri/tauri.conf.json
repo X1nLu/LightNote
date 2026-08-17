@@ -5,7 +5,7 @@
   "identifier": "com.zxinl.LightNote",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://127.0.0.1:5173",
+    "devUrl": "http://127.0.0.1:1420",
     "beforeBuildCommand": "npm run build",
     "beforeBundleCommand": "node scripts/prepare-windows-bundle.mjs",
     "frontendDist": "../dist"

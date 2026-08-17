@@ -1,15 +1,10 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::State;
-
-struct DbState {
-    conn: Mutex<Connection>,
-}
 
 struct LaunchPathState {
     path: Mutex<Option<String>>,
@@ -76,50 +71,14 @@ fn first_supported_path(args: &[String]) -> Option<String> {
 }
 
 #[tauri::command]
-fn load_document(state: State<'_, DbState>) -> Result<String, String> {
-    let conn = state
-        .conn
-        .lock()
-        .map_err(|err| format!("failed to lock database: {err}"))?;
-
-    let mut stmt = conn
-        .prepare("SELECT content FROM documents WHERE id = 1")
-        .map_err(|err| format!("failed to prepare load query: {err}"))?;
-
-    let mut rows = stmt
-        .query([])
-        .map_err(|err| format!("failed to query document: {err}"))?;
-
-    if let Some(row) = rows
-        .next()
-        .map_err(|err| format!("failed to read row: {err}"))?
-    {
-        row.get(0)
-            .map_err(|err| format!("failed to parse content: {err}"))
-    } else {
-        Ok(String::new())
+fn save_external_file(path: String, content: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    if path.exists() && !path.is_file() {
+        return Err("path is not a file".to_string());
     }
-}
 
-#[tauri::command]
-fn save_document(content: String, state: State<'_, DbState>) -> Result<(), String> {
-    let conn = state
-        .conn
-        .lock()
-        .map_err(|err| format!("failed to lock database: {err}"))?;
-
-    conn.execute(
-        "INSERT INTO documents (id, content, updated_at)
-         VALUES (1, ?1, datetime('now'))
-         ON CONFLICT(id)
-         DO UPDATE SET
-           content = excluded.content,
-           updated_at = datetime('now')",
-        params![content],
-    )
-    .map_err(|err| format!("failed to save document: {err}"))?;
-
-    Ok(())
+    std::fs::write(&path, content)
+        .map_err(|err| format!("failed to save file {}: {err}", path.display()))
 }
 
 #[tauri::command]
@@ -194,31 +153,6 @@ fn read_local_image(base_dir: String, image_path: String) -> Result<LocalImage, 
     })
 }
 
-fn init_database(app: &tauri::AppHandle) -> Result<Connection, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|err| format!("failed to resolve app data dir: {err}"))?;
-
-    std::fs::create_dir_all(&app_data_dir)
-        .map_err(|err| format!("failed to create app data dir: {err}"))?;
-
-    let db_path = app_data_dir.join("editor.db");
-    let conn = Connection::open(db_path).map_err(|err| format!("failed to open sqlite: {err}"))?;
-
-    conn.execute_batch(
-        "PRAGMA journal_mode = WAL;
-         CREATE TABLE IF NOT EXISTS documents (
-           id INTEGER PRIMARY KEY,
-           content TEXT NOT NULL,
-           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-         );",
-    )
-    .map_err(|err| format!("failed to initialize sqlite schema: {err}"))?;
-
-    Ok(conn)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -237,10 +171,6 @@ pub fn run() {
             }
         }))
         .setup(|app| {
-            let conn = init_database(app.handle())?;
-            app.manage(DbState {
-                conn: Mutex::new(conn),
-            });
             app.manage(LaunchPathState {
                 path: Mutex::new(first_supported_path(&std::env::args().collect::<Vec<_>>())),
             });
@@ -248,8 +178,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            load_document,
-            save_document,
+            save_external_file,
             take_pending_launch_path,
             open_external_file,
             read_local_image
