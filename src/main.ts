@@ -244,7 +244,6 @@ function getEditorTheme(): ReturnType<typeof EditorView.theme> {
       "&": { color: dark ? "#d8d6ce" : "#2a241d", backgroundColor: dark ? "#20211f" : "#fefcf8" },
       ".cm-content": { caretColor: dark ? "#a8c7b9" : "#0f766e" },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: dark ? "#a8c7b9" : "#0f766e" },
-      ".cm-selectionBackground, ::selection": { backgroundColor: dark ? "#3b4a45" : "#d6ebe5" },
       ".cm-gutters": { color: dark ? "#8e9189" : "#7a746b", backgroundColor: dark ? "#1c1d1b" : "#f8f7f2", border: "none" },
       ".cm-activeLine": { backgroundColor: dark ? "#292b28" : "#faf8f1" },
       ".cm-activeLineGutter": { backgroundColor: dark ? "#292b28" : "#f0eee6" },

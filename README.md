@@ -132,34 +132,23 @@ npm run tauri build
 
 该命令会通过仓库内的 Tauri 包装脚本调用 CLI；在 Windows 上打包前会先清理旧安装包，并将 `src-tauri/target/` 及其 bundle 目录标记为“无内容索引”，以降低资源管理器或 Windows Search 对新产物的瞬时占用概率。
 
-当前仓库默认会在 `src-tauri/target/release/bundle/` 下生成 Windows 安装包，通常包括：
-
-- `msi/`：MSI 安装包，适合企业部署和静默安装。
-- `nsis/`：NSIS 安装程序，适合普通用户分发。
+当前仓库默认只生成 NSIS 安装程序，产物位于 `src-tauri/target/release/bundle/nsis/`。
 
 安装体验说明：
 
-- NSIS 安装器支持 English 和简体中文语言选择，默认使用 Windows 系统语言；MSI 分别提供英文和简体中文安装包。
+- NSIS 安装器支持 English 和简体中文语言选择，默认使用 Windows 系统语言。
 - NSIS 安装器会在安装流程里询问是否添加 `.md`、`.markdown`、`.txt` 的右键菜单（默认“是”）。
-- MSI/NSIS 都会包含文件关联声明，安装后可通过系统“打开方式/默认应用”将这些扩展名关联到 LightNote。
+- 安装器会包含文件关联声明，安装后可通过系统“打开方式/默认应用”将这些扩展名关联到 LightNote。
 - 卸载时会自动清理 LightNote 写入的右键菜单注册表项。
 
 当前版本的具体产物路径为：
 
-- `src-tauri/target/release/bundle/msi/LightNote_0.1.0_x64_en-US.msi`
-- `src-tauri/target/release/bundle/msi/LightNote_0.1.0_x64_zh-CN.msi`
 - `src-tauri/target/release/bundle/nsis/LightNote_0.1.0_x64-setup.exe`
 - `src-tauri/target/release/lightnote.exe`：未打包的 Windows 可执行文件。
 
-发布前建议使用代码签名证书签名 `.msi` 或安装程序，以减少 Windows SmartScreen 警告。可使用 Windows SDK 自带的 `signtool`，或在 CI 中配置签名步骤。
+发布前建议使用代码签名证书签名安装程序，以减少 Windows SmartScreen 警告。可使用 Windows SDK 自带的 `signtool`，或在 CI 中配置签名步骤。
 
-如果确实需要 MSI，可单独尝试：
-
-```powershell
-npx tauri build --bundles msi
-```
-
-当前仓库会在打包前清理旧的 MSI/NSIS 安装包，并将 `src-tauri/target/` 及其 bundle 目录标记为“无内容索引”，以降低 Windows Search 或资源管理器对新产物的瞬时占用概率。即使在安装包已经生成后出现短暂文件锁，包装脚本也只会在确认本次请求的安装包都已生成且可访问后返回成功。
+当前仓库会在打包前清理旧的 NSIS 安装包和历史 MSI 产物，并将 `src-tauri/target/` 及其 bundle 目录标记为“无内容索引”，以降低 Windows Search 或资源管理器对新产物的瞬时占用概率。即使在安装包已经生成后出现短暂文件锁，包装脚本也只会在确认本次请求的安装包已生成且可访问后返回成功。
 
 ### macOS
 

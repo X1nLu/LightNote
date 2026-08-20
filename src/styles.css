@@ -46,6 +46,24 @@
   box-sizing: border-box;
 }
 
+::selection {
+  color: #ffffff;
+  background: #0078d4;
+}
+
+#editor .cm-editor .cm-selectionBackground,
+#editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
+  background: #0078d4 !important;
+}
+
+#editor .cm-editor .cm-line::selection,
+#editor .cm-editor .cm-line ::selection,
+#editor .cm-editor .cm-content::selection,
+#editor .cm-editor .cm-content ::selection {
+  color: #ffffff !important;
+  background: #0078d4 !important;
+}
+
 html,
 body {
   margin: 0;

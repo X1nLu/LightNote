@@ -25,7 +25,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": "nsis",
     "fileAssociations": [
       {
         "ext": [
@@ -44,23 +44,6 @@
       }
     ],
     "windows": {
-      "wix": {
-        "template": "installer/wix-template.wxs",
-        "fragmentPaths": [
-          "installer/wix-context-menu.wxs"
-        ],
-        "componentGroupRefs": [
-          "LightNoteContextMenuComponents"
-        ],
-        "language": {
-          "en-US": {
-            "localePath": "installer/en-US.wxl"
-          },
-          "zh-CN": {
-            "localePath": "installer/zh-CN.wxl"
-          }
-        }
-      },
       "nsis": {
         "installMode": "currentUser",
         "displayLanguageSelector": true,

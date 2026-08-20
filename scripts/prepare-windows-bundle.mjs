@@ -12,11 +12,11 @@ const releaseDir = path.join(targetDir, 'release');
 const bundleDir = path.join(releaseDir, 'bundle');
 const bundleTargets = [
   path.join(bundleDir, 'nsis'),
-  path.join(bundleDir, 'msi'),
 ];
+const staleBundleTargets = [path.join(bundleDir, 'msi')];
 
 await ensureDirectories([targetDir, releaseDir, bundleDir, ...bundleTargets]);
-await removeOldBundles(bundleTargets);
+await removeOldBundles([...bundleTargets, ...staleBundleTargets]);
 markNoIndex([targetDir, releaseDir, bundleDir, ...bundleTargets]);
 
 async function ensureDirectories(directories) {

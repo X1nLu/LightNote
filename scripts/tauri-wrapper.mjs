@@ -76,7 +76,7 @@ async function resolveExpectedBundles(cliArgs) {
     const config = JSON.parse(raw);
     const targets = config?.bundle?.targets;
     if (targets === 'all') {
-      return ['nsis', 'msi'];
+      return ['nsis'];
     }
 
     if (typeof targets === 'string') {
