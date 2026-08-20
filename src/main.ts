@@ -925,14 +925,15 @@ function focusEditorLine(lineNumber: number): void {
 }
 
 function handlePreviewClick(event: MouseEvent): void {
+  if (!isSplitMode()) {
+    return;
+  }
+
   const lineNumber = getSourceLineFromPreviewTarget(event.target);
   if (lineNumber === null) {
     return;
   }
 
-  if (!appShellEl.classList.contains("mode-split")) {
-    setDisplayMode("editor");
-  }
   focusEditorLine(lineNumber);
 }
 
