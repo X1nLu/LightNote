@@ -364,6 +364,7 @@ let spellcheckRequestId = 0;
 let previewObjectUrls: string[] = [];
 let splitRatio = loadSplitRatio();
 let activeSplitPointerId: number | null = null;
+let editorScrollAnimationFrame: number | null = null;
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
@@ -872,24 +873,50 @@ function getPreviewBlockForLine(lineNumber: number): HTMLElement | null {
   return nextBlock?.element ?? blocks[blocks.length - 1]?.element ?? null;
 }
 
-function syncPreviewToEditor(view: EditorView): void {
+function getEditorTopVisibleLine(view: EditorView): number {
+  const scrollerRect = view.scrollDOM.getBoundingClientRect();
+  const contentRect = view.contentDOM.getBoundingClientRect();
+  const position = view.posAtCoords(
+    {
+      x: Math.max(contentRect.left + 1, scrollerRect.left + 1),
+      y: scrollerRect.top + 1,
+    },
+    false,
+  );
+
+  return view.state.doc.lineAt(position ?? view.viewport.from).number;
+}
+
+function syncPreviewToEditor(view: EditorView, lineNumber?: number): void {
   if (!isSplitMode()) {
     return;
   }
 
-  const lineNumber = view.state.doc.lineAt(view.state.selection.main.head).number;
-  const block = getPreviewBlockForLine(lineNumber);
+  const block = getPreviewBlockForLine(
+    lineNumber ?? view.state.doc.lineAt(view.state.selection.main.head).number,
+  );
   if (!block) {
     return;
   }
 
   const previewRect = previewEl.getBoundingClientRect();
   const blockRect = block.getBoundingClientRect();
-  const topOffset = Math.min(72, Math.max(24, previewEl.clientHeight * 0.16));
+  const topOffset = previewEl.clientHeight * 0.35;
   const targetTop =
     previewEl.scrollTop + blockRect.top - previewRect.top - topOffset;
   const maxScrollTop = Math.max(0, previewEl.scrollHeight - previewEl.clientHeight);
   previewEl.scrollTop = clamp(targetTop, 0, maxScrollTop);
+}
+
+function schedulePreviewSyncToEditorScroll(): void {
+  if (!isSplitMode() || editorScrollAnimationFrame !== null) {
+    return;
+  }
+
+  editorScrollAnimationFrame = window.requestAnimationFrame(() => {
+    editorScrollAnimationFrame = null;
+    syncPreviewToEditor(editorView, getEditorTopVisibleLine(editorView));
+  });
 }
 
 function getSourceLineFromPreviewTarget(target: EventTarget | null): number | null {
@@ -1176,7 +1203,7 @@ async function initEditor(): Promise<void> {
           if (update.docChanged) {
             const latest = update.state.doc.toString();
             void renderPreview(latest).then(() => {
-              syncPreviewToEditor(update.view);
+              syncPreviewToEditor(update.view, getEditorTopVisibleLine(update.view));
             });
             setDirtyState(true);
             setStatus(translate("unsaved"));
@@ -1185,13 +1212,17 @@ async function initEditor(): Promise<void> {
             return;
           }
 
-          if (update.selectionSet || update.viewportChanged) {
+          if (update.selectionSet) {
             syncPreviewToEditor(update.view);
+            return;
           }
         }),
       ],
     }),
     parent: editorRootEl,
+  });
+  editorView.scrollDOM.addEventListener("scroll", schedulePreviewSyncToEditorScroll, {
+    passive: true,
   });
 
   await renderPreview(content);
