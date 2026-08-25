@@ -84,6 +84,14 @@ fn set_menu_item_text<R: tauri::Runtime>(item: Option<MenuItemKind<R>>, text: &s
     }
 }
 
+fn set_submenu_item_text_at<R: tauri::Runtime>(submenu: &Submenu<R>, index: usize, text: &str) {
+    let item = submenu
+        .items()
+        .ok()
+        .and_then(|items| items.into_iter().nth(index));
+    set_menu_item_text(item, text);
+}
+
 fn update_menu_language<R: tauri::Runtime>(app: &tauri::AppHandle<R>, english: bool) {
     let Some(menu) = app.menu() else {
         return;
@@ -102,15 +110,15 @@ fn update_menu_language<R: tauri::Runtime>(app: &tauri::AppHandle<R>, english: b
     set_menu_item_text(Some(MenuItemKind::Submenu(file_menu.clone())), if english { "File" } else { "文件" });
     set_menu_item_text(file_menu.get("file.open"), if english { "Open File" } else { "打开文件" });
     set_menu_item_text(file_menu.get("file.save"), if english { "Save" } else { "保存" });
-    set_menu_item_text(file_menu.get("quit"), if english { "Quit" } else { "退出" });
+    set_submenu_item_text_at(file_menu, 3, if english { "Quit" } else { "退出" });
 
     set_menu_item_text(Some(MenuItemKind::Submenu(edit_menu.clone())), if english { "Edit" } else { "编辑" });
     set_menu_item_text(edit_menu.get("edit.undo"), if english { "Undo" } else { "撤销" });
     set_menu_item_text(edit_menu.get("edit.redo"), if english { "Redo" } else { "重做" });
-    set_menu_item_text(edit_menu.get("cut"), if english { "Cut" } else { "剪切" });
-    set_menu_item_text(edit_menu.get("copy"), if english { "Copy" } else { "复制" });
-    set_menu_item_text(edit_menu.get("paste"), if english { "Paste" } else { "粘贴" });
-    set_menu_item_text(edit_menu.get("select_all"), if english { "Select All" } else { "全选" });
+    set_submenu_item_text_at(edit_menu, 3, if english { "Cut" } else { "剪切" });
+    set_submenu_item_text_at(edit_menu, 4, if english { "Copy" } else { "复制" });
+    set_submenu_item_text_at(edit_menu, 5, if english { "Paste" } else { "粘贴" });
+    set_submenu_item_text_at(edit_menu, 6, if english { "Select All" } else { "全选" });
     set_menu_item_text(edit_menu.get("edit.find"), if english { "Find" } else { "查找" });
     set_menu_item_text(edit_menu.get("edit.replace"), if english { "Find and Replace" } else { "查找和替换" });
     set_menu_item_text(edit_menu.get("edit.find_next"), if english { "Find Next" } else { "下一个匹配" });
