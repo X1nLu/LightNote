@@ -91,19 +91,8 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--line);
-}
-
-.brand h1 {
-  margin: 0;
-  font-size: 1.15rem;
-}
-
-.brand p {
-  margin: 2px 0 0;
-  font-size: 0.83rem;
-  color: var(--subtle);
+  padding: 0;
+  border-bottom: 0;
 }
 
 button {
@@ -321,7 +310,6 @@ button:hover {
 }
 
 @media print {
-  .topbar,
   .editor-panel,
   .status-bar {
     display: none !important;
