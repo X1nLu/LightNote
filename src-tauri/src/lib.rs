@@ -535,7 +535,7 @@ pub fn run() {
                 let title = if resolve_language(&app.handle()) == "en" {
                     "LightNote"
                 } else {
-                    "LightNote - 轻笺"
+                    "LightNote"
                 };
                 let _ = window.set_title(title);
             }

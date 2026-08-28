@@ -64,7 +64,7 @@ const translations: Record<AppLanguage, Record<string, string>> = {
     contextOpenFailed: "打开右键文件失败: {error}",
     unsaved: "有未保存修改",
     newDocument: "新建文档，尚未保存到文件",
-    initialText: "# LightNote\n\n欢迎使用轻笺，一个轻量、离线优先的 Markdown 编辑器。\n\n- 支持打开和保存 Markdown 文件\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n```mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Done]\n```\n",
+    initialText: "# LightNote\n\n欢迎使用，一个轻量、离线优先的 Markdown 编辑器。\n\n- 支持打开和保存 Markdown 文件\n- 支持 KaTeX 公式\n- 支持 Mermaid 流程图\n\n行内公式：$E = mc^2$\n\n块公式：\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n```mermaid\nflowchart TD\n  A[Start] --> B{Need Review?}\n  B -- Yes --> C[Edit Markdown]\n  B -- No --> D[Done]\n```\n",
   },
   en: {
     languageLabel: "Language",
@@ -121,7 +121,7 @@ function translate(key: string, values: Record<string, string> = {}): string {
 function applyLanguage(preference: LanguagePreference): void {
   currentLanguage = resolveLanguage(preference);
   document.documentElement.lang = currentLanguage;
-  document.title = currentLanguage === "en" ? "LightNote" : "LightNote - 轻笺";
+  document.title = currentLanguage === "en" ? "LightNote" : "LightNote";
   document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
     const key = element.dataset.i18n;
     if (key) {
