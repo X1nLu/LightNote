@@ -1,0 +1,29 @@
+﻿LightNote End User License Agreement
+
+Please read this agreement carefully before installing or using LightNote. By installing, copying, or using LightNote, you agree to the terms below. If you do not agree, do not install or use the software.
+
+1. License Grant
+LightNote is licensed, not sold. You are granted a non-exclusive, non-transferable, revocable right to install and use LightNote for personal or internal business use, subject to this agreement.
+
+2. Restrictions
+You may not reverse engineer, decompile, disassemble, modify, redistribute, sublicense, rent, lease, or sell LightNote, except where such restriction is prohibited by applicable law.
+
+3. Ownership
+All rights, title, and interest in LightNote, including all intellectual property rights, remain with the software author and rights holders.
+
+4. Data and Files
+You are responsible for reviewing, backing up, and protecting any files opened, edited, or saved with LightNote. The software may read and write files selected by you or passed to it by the operating system.
+
+5. No Warranty
+LightNote is provided on an AS IS basis, without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, title, and non-infringement.
+
+6. Limitation of Liability
+To the maximum extent permitted by law, the author and rights holders will not be liable for any indirect, incidental, special, consequential, or punitive damages, or for any loss of data, profits, revenue, or business opportunities arising from the use of or inability to use LightNote.
+
+7. Termination
+This agreement terminates automatically if you fail to comply with its terms. Upon termination, you must stop using LightNote and remove installed copies.
+
+8. General
+This agreement is intended as a general software installation agreement template. You may replace it with project-specific legal terms at any time.
+
+By clicking Accept or continuing the installation, you acknowledge that you have read and understood this agreement.

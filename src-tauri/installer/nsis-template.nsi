@@ -1,12 +1,23 @@
-!if "lzma" == "none"
+Unicode true
+ManifestDPIAware true
+; Add in `dpiAwareness` `PerMonitorV2` to manifest for Windows 10 1607+ (note this should not affect lower versions since they should be able to ignore this and pick up `dpiAware` `true` set by `ManifestDPIAware true`)
+; Currently undocumented on NSIS's website but is in the Docs folder of source tree, see
+; https://github.com/kichik/nsis/blob/5fc0b87b819a9eec006df4967d08e522ddd651c9/Docs/src/attributes.but#L286-L300
+; https://github.com/tauri-apps/tauri/pull/10106
+ManifestDPIAwareness PerMonitorV2
+
+!if "{{compression}}" == "none"
   SetCompress off
 !else
   ; Set the compression algorithm. We default to LZMA.
-  SetCompressor /SOLID "lzma"
+  SetCompressor /SOLID "{{compression}}"
 !endif
 
 ; Keep above !include to stay ahead of any plugin command
 ; see https://github.com/tauri-apps/tauri/pull/15422#discussion_r3289239624
+{{#if signed_plugins_path}}
+!addplugindir "{{signed_plugins_path}}"
+{{/if}}
 
 !include MUI2.nsh
 !include FileFunc.nsh
@@ -20,42 +31,44 @@
 ${StrCase}
 ${StrLoc}
 
-!include "D:\WWW\LightNote\src-tauri\installer\nsis-hooks.nsh"
+{{#if installer_hooks}}
+!include "{{installer_hooks}}"
+{{/if}}
 
 !define WEBVIEW2APPGUID "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
-!define MANUFACTURER "zxinl"
-!define PRODUCTNAME "LightNote"
-!define VERSION "0.1.0"
-!define VERSIONWITHBUILD "0.1.0.0"
-!define HOMEPAGE ""
-!define INSTALLMODE "currentUser"
-!define LICENSE "D:\WWW\LightNote\src-tauri\installer\license.rtf"
-!define INSTALLERICON ""
-!define SIDEBARIMAGE ""
-!define HEADERIMAGE ""
-!define UNINSTALLERICON ""
-!define UNINSTALLERHEADERIMAGE ""
-!define MAINBINARYNAME "lightnote"
-!define MAINBINARYSRCPATH "D:\WWW\LightNote\src-tauri\target\release\lightnote.exe"
-!define BUNDLEID "com.zxinl.LightNote"
-!define COPYRIGHT ""
-!define OUTFILE "nsis-output.exe"
-!define ARCH "x64"
-!define ADDITIONALPLUGINSPATH "C:\Users\zxinl\AppData\Local\tauri\NSIS\Plugins\x86-unicode\additional"
-!define ALLOWDOWNGRADES "true"
-!define DISPLAYLANGUAGESELECTOR "true"
-!define INSTALLWEBVIEW2MODE "downloadBootstrapper"
-!define WEBVIEW2INSTALLERARGS "/silent"
-!define WEBVIEW2BOOTSTRAPPERPATH ""
-!define WEBVIEW2INSTALLERPATH ""
-!define MINIMUMWEBVIEW2VERSION ""
+!define MANUFACTURER "{{manufacturer}}"
+!define PRODUCTNAME "{{product_name}}"
+!define VERSION "{{version}}"
+!define VERSIONWITHBUILD "{{version_with_build}}"
+!define HOMEPAGE "{{homepage}}"
+!define INSTALLMODE "{{install_mode}}"
+!define LICENSE "{{license}}"
+!define INSTALLERICON "{{installer_icon}}"
+!define SIDEBARIMAGE "{{sidebar_image}}"
+!define HEADERIMAGE "{{header_image}}"
+!define UNINSTALLERICON "{{uninstaller_icon}}"
+!define UNINSTALLERHEADERIMAGE "{{uninstaller_header_image}}"
+!define MAINBINARYNAME "{{main_binary_name}}"
+!define MAINBINARYSRCPATH "{{main_binary_path}}"
+!define BUNDLEID "{{bundle_id}}"
+!define COPYRIGHT "{{copyright}}"
+!define OUTFILE "{{out_file}}"
+!define ARCH "{{arch}}"
+!define ADDITIONALPLUGINSPATH "{{additional_plugins_path}}"
+!define ALLOWDOWNGRADES "{{allow_downgrades}}"
+!define DISPLAYLANGUAGESELECTOR "{{display_language_selector}}"
+!define INSTALLWEBVIEW2MODE "{{install_webview2_mode}}"
+!define WEBVIEW2INSTALLERARGS "{{webview2_installer_args}}"
+!define WEBVIEW2BOOTSTRAPPERPATH "{{webview2_bootstrapper_path}}"
+!define WEBVIEW2INSTALLERPATH "{{webview2_installer_path}}"
+!define MINIMUMWEBVIEW2VERSION "{{minimum_webview2_version}}"
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCTNAME}"
 !define MANUKEY "Software\${MANUFACTURER}"
 !define MANUPRODUCTKEY "${MANUKEY}\${PRODUCTNAME}"
-!define UNINSTALLERSIGNCOMMAND ""
-!define ESTIMATEDSIZE "14393"
-!define STARTMENUFOLDER ""
+!define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
+!define ESTIMATEDSIZE "{{estimated_size}}"
+!define STARTMENUFOLDER "{{start_menu_folder}}"
 
 Var PassiveMode
 Var UpdateMode
@@ -156,11 +169,9 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_WELCOME
 
-; 2. License Page (if defined)
-!if "${LICENSE}" != ""
-  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-  !insertmacro MUI_PAGE_LICENSE "${LICENSE}"
-!endif
+; 2. License Page
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+!insertmacro MUI_PAGE_LICENSE "$(lightNoteLicense)"
 
 ; 3. Install mode (if it is set to `both`)
 !if "${INSTALLMODE}" == "both"
@@ -455,12 +466,17 @@ FunctionEnd
 ; 2. Uninstalling Page
 !insertmacro MUI_UNPAGE_INSTFILES
 
-;Languages
-!insertmacro MUI_LANGUAGE "English"
-!insertmacro MUI_LANGUAGE "SimpChinese"
+; Languages
+{{#each languages}}
+!insertmacro MUI_LANGUAGE "{{this}}"
+{{/each}}
 !insertmacro MUI_RESERVEFILE_LANGDLL
-  !include "D:\WWW\LightNote\src-tauri\target\release\nsis\x64\English.nsh"
-  !include "D:\WWW\LightNote\src-tauri\target\release\nsis\x64\SimpChinese.nsh"
+{{#each language_files}}
+  !include "{{this}}"
+{{/each}}
+{{#if installer_hooks}}
+!insertmacro DefineLightNoteLanguageStrings
+{{/if}}
 
 Function .onInit
   ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -636,8 +652,17 @@ Section Install
   File "${MAINBINARYSRCPATH}"
 
   ; Copy resources
+  {{#each resources_dirs}}
+    CreateDirectory "$INSTDIR\\{{this}}"
+  {{/each}}
+  {{#each resources}}
+    File /a "/oname={{this.[1]}}" "{{no-escape @key}}"
+  {{/each}}
 
   ; Copy external binaries
+  {{#each binaries}}
+    File /a "/oname={{this}}" "{{no-escape @key}}"
+  {{/each}}
 
   ; Create file associations
 !insertmacro APP_ASSOCIATE "md" "$(markdownDocument)" "$(markdownFile)" "$INSTDIR\${MAINBINARYNAME}.exe,0" "$(openWithLightNote)" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
@@ -645,6 +670,12 @@ Section Install
 !insertmacro APP_ASSOCIATE "txt" "$(textDocument)" "$(textFile)" "$INSTDIR\${MAINBINARYNAME}.exe,0" "$(openWithLightNote)" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
 
   ; Register deep links
+  {{#each deep_link_protocols as |protocol| ~}}
+    WriteRegStr SHCTX "Software\Classes\\{{protocol}}" "URL Protocol" ""
+    WriteRegStr SHCTX "Software\Classes\\{{protocol}}" "" "URL:${BUNDLEID} protocol"
+    WriteRegStr SHCTX "Software\Classes\\{{protocol}}\DefaultIcon" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\",0"
+    WriteRegStr SHCTX "Software\Classes\\{{protocol}}\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
+  {{/each}}
 
   ; Create uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -757,20 +788,37 @@ Section Uninstall
   Delete "$INSTDIR\${MAINBINARYNAME}.exe"
 
   ; Delete resources
+  {{#each resources}}
+    Delete "$INSTDIR\\{{this.[1]}}"
+  {{/each}}
 
   ; Delete external binaries
+  {{#each binaries}}
+    Delete "$INSTDIR\\{{this}}"
+  {{/each}}
 
   ; Delete app associations
-!insertmacro APP_UNASSOCIATE "md" "Markdown Document"
-!insertmacro APP_UNASSOCIATE "markdown" "Markdown Document"
-!insertmacro APP_UNASSOCIATE "txt" "Text Document"
+  {{#each file_associations as |association| ~}}
+    {{#each association.ext as |ext| ~}}
+      !insertmacro APP_UNASSOCIATE "{{ext}}" "{{or association.name ext}}"
+    {{/each}}
+  {{/each}}
 
   ; Delete deep links
+  {{#each deep_link_protocols as |protocol| ~}}
+    ReadRegStr $R7 SHCTX "Software\Classes\\{{protocol}}\shell\open\command" ""
+    ${If} $R7 == "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
+      DeleteRegKey SHCTX "Software\Classes\\{{protocol}}"
+    ${EndIf}
+  {{/each}}
 
 
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
 
+  {{#each resources_ancestors}}
+  RMDir /REBOOTOK "$INSTDIR\\{{this}}"
+  {{/each}}
   RMDir "$INSTDIR"
 
   ; Remove shortcuts if not updating
