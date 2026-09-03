@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 const devHost = host || "127.0.0.1";
-const devPort = 1420;
+const devPort = 14200;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({

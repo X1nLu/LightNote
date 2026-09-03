@@ -84,55 +84,69 @@ fn set_menu_item_text<R: tauri::Runtime>(item: Option<MenuItemKind<R>>, text: &s
     }
 }
 
-fn set_submenu_item_text_at<R: tauri::Runtime>(submenu: &Submenu<R>, index: usize, text: &str) {
-    let item = submenu
-        .items()
-        .ok()
-        .and_then(|items| items.into_iter().nth(index));
-    set_menu_item_text(item, text);
+// 预定义菜单项（退出/剪切/复制/粘贴/全选）由 muda 生成不稳定的 ID，无法按 ID 查找。
+// 这里按“当前可能的中英文文本”匹配定位，避免依赖位置下标——菜单中插入新项也不会错位。
+fn set_predefined_text_by_current<R: tauri::Runtime>(
+    submenu: &Submenu<R>,
+    current_texts: &[&str],
+    new_text: &str,
+) {
+    let Ok(items) = submenu.items() else {
+        return;
+    };
+    for kind in items {
+        if let MenuItemKind::Predefined(item) = kind {
+            let matches = item
+                .text()
+                .map(|text| current_texts.contains(&text.as_str()))
+                .unwrap_or(false);
+            if matches {
+                let _ = item.set_text(new_text);
+                return;
+            }
+        }
+    }
 }
 
 fn update_menu_language<R: tauri::Runtime>(app: &tauri::AppHandle<R>, english: bool) {
     let Some(menu) = app.menu() else {
         return;
     };
-    let items = menu.items().unwrap_or_default();
-    let Some(MenuItemKind::Submenu(file_menu)) = items.first() else {
+    let Some(MenuItemKind::Submenu(file_menu)) = menu.get("menu.file") else {
         return;
     };
-    let Some(MenuItemKind::Submenu(edit_menu)) = items.get(1) else {
+    let Some(MenuItemKind::Submenu(edit_menu)) = menu.get("menu.edit") else {
         return;
     };
-    let Some(MenuItemKind::Submenu(view_menu)) = items.get(2) else {
+    let Some(MenuItemKind::Submenu(view_menu)) = menu.get("menu.view") else {
         return;
     };
 
     set_menu_item_text(Some(MenuItemKind::Submenu(file_menu.clone())), if english { "File" } else { "文件" });
     set_menu_item_text(file_menu.get("file.open"), if english { "Open File" } else { "打开文件" });
     set_menu_item_text(file_menu.get("file.save"), if english { "Save" } else { "保存" });
-    set_submenu_item_text_at(file_menu, 3, if english { "Quit" } else { "退出" });
+    set_predefined_text_by_current(&file_menu, &["Quit", "退出"], if english { "Quit" } else { "退出" });
 
     set_menu_item_text(Some(MenuItemKind::Submenu(edit_menu.clone())), if english { "Edit" } else { "编辑" });
     set_menu_item_text(edit_menu.get("edit.undo"), if english { "Undo" } else { "撤销" });
     set_menu_item_text(edit_menu.get("edit.redo"), if english { "Redo" } else { "重做" });
-    set_submenu_item_text_at(edit_menu, 3, if english { "Cut" } else { "剪切" });
-    set_submenu_item_text_at(edit_menu, 4, if english { "Copy" } else { "复制" });
-    set_submenu_item_text_at(edit_menu, 5, if english { "Paste" } else { "粘贴" });
-    set_submenu_item_text_at(edit_menu, 6, if english { "Select All" } else { "全选" });
+    set_predefined_text_by_current(&edit_menu, &["Cut", "剪切"], if english { "Cut" } else { "剪切" });
+    set_predefined_text_by_current(&edit_menu, &["Copy", "复制"], if english { "Copy" } else { "复制" });
+    set_predefined_text_by_current(&edit_menu, &["Paste", "粘贴"], if english { "Paste" } else { "粘贴" });
+    set_predefined_text_by_current(&edit_menu, &["Select All", "全选"], if english { "Select All" } else { "全选" });
     set_menu_item_text(edit_menu.get("edit.find"), if english { "Find" } else { "查找" });
     set_menu_item_text(edit_menu.get("edit.replace"), if english { "Find and Replace" } else { "查找和替换" });
     set_menu_item_text(edit_menu.get("edit.find_next"), if english { "Find Next" } else { "下一个匹配" });
     set_menu_item_text(edit_menu.get("edit.find_previous"), if english { "Find Previous" } else { "上一个匹配" });
 
     set_menu_item_text(Some(MenuItemKind::Submenu(view_menu.clone())), if english { "View" } else { "视图" });
-    let view_items = view_menu.items().unwrap_or_default();
-    let Some(MenuItemKind::Submenu(display_mode_menu)) = view_items.first() else {
+    let Some(MenuItemKind::Submenu(display_mode_menu)) = view_menu.get("menu.view.display") else {
         return;
     };
-    let Some(MenuItemKind::Submenu(theme_menu)) = view_items.get(1) else {
+    let Some(MenuItemKind::Submenu(theme_menu)) = view_menu.get("menu.view.theme") else {
         return;
     };
-    let Some(MenuItemKind::Submenu(language_menu)) = view_items.get(2) else {
+    let Some(MenuItemKind::Submenu(language_menu)) = view_menu.get("menu.view.language") else {
         return;
     };
     set_menu_item_text(Some(MenuItemKind::Submenu(display_mode_menu.clone())), if english { "Display Mode" } else { "显示模式" });
@@ -167,7 +181,9 @@ fn set_language_preference<R: tauri::Runtime>(
             .map_err(|error| format!("failed to create language config directory: {error}"))?;
     }
     std::fs::write(path, language)
-        .map_err(|error| format!("failed to save language preference: {error}"))
+        .map_err(|error| format!("failed to save language preference: {error}"))?;
+    update_menu_language(&app, resolve_language(&app) == "en");
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -571,8 +587,9 @@ pub fn run() {
                 true,
                 Some("Ctrl+S"),
             )?;
-            let file_menu = Submenu::with_items(
+            let file_menu = Submenu::with_id_and_items(
                 app,
+                "menu.file",
                 if english { "File" } else { "文件" },
                 true,
                 &[
@@ -595,8 +612,9 @@ pub fn run() {
                 true,
                 Some("Shift+F3"),
             )?;
-            let edit_menu = Submenu::with_items(
+            let edit_menu = Submenu::with_id_and_items(
                 app,
+                "menu.edit",
                 if english { "Edit" } else { "编辑" },
                 true,
                 &[
@@ -618,8 +636,9 @@ pub fn run() {
             let editor = MenuItem::with_id(app, "view.editor", if english { "Editor" } else { "单栏编辑" }, true, Some("Ctrl+1"))?;
             let preview = MenuItem::with_id(app, "view.preview", if english { "Preview" } else { "单栏预览" }, true, Some("Ctrl+2"))?;
             let split = MenuItem::with_id(app, "view.split", if english { "Split View" } else { "分栏" }, true, Some("Ctrl+3"))?;
-            let display_mode_menu = Submenu::with_items(
+            let display_mode_menu = Submenu::with_id_and_items(
                 app,
+                "menu.view.display",
                 if english { "Display Mode" } else { "显示模式" },
                 true,
                 &[&editor, &preview, &split],
@@ -627,8 +646,9 @@ pub fn run() {
             let theme_system = MenuItem::with_id(app, "view.theme.system", if english { "System" } else { "跟随系统" }, true, None::<&str>)?;
             let theme_light = MenuItem::with_id(app, "view.theme.light", if english { "Light" } else { "浅色" }, true, None::<&str>)?;
             let theme_dark = MenuItem::with_id(app, "view.theme.dark", if english { "Dark" } else { "深色" }, true, None::<&str>)?;
-            let theme_menu = Submenu::with_items(
+            let theme_menu = Submenu::with_id_and_items(
                 app,
+                "menu.view.theme",
                 if english { "Theme" } else { "主题" },
                 true,
                 &[&theme_system, &theme_light, &theme_dark],
@@ -636,14 +656,16 @@ pub fn run() {
             let language_system = MenuItem::with_id(app, "language.system", if english { "Follow System" } else { "跟随系统" }, true, None::<&str>)?;
             let language_zh = MenuItem::with_id(app, "language.zh-CN", if english { "Simplified Chinese" } else { "中文简体" }, true, None::<&str>)?;
             let language_en = MenuItem::with_id(app, "language.en", "English", true, None::<&str>)?;
-            let language_menu = Submenu::with_items(
+            let language_menu = Submenu::with_id_and_items(
                 app,
+                "menu.view.language",
                 if english { "Language" } else { "语言" },
                 true,
                 &[&language_system, &language_zh, &language_en],
             )?;
-            let view_menu = Submenu::with_items(
+            let view_menu = Submenu::with_id_and_items(
                 app,
+                "menu.view",
                 if english { "View" } else { "视图" },
                 true,
                 &[

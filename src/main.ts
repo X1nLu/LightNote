@@ -41,7 +41,6 @@ const translations: Record<AppLanguage, Record<string, string>> = {
     preview: "预览",
     resize: "调整编辑区与预览区宽度",
     ready: "准备就绪",
-    restart: "语言设置已保存，请关闭并重新打开应用后生效",
     spellingError: "可能的拼写错误: {word}",
     spellcheckFailed: "拼写检查失败: {error}",
     spellcheckInitFailed: "拼写检查初始化失败: {error}",
@@ -75,7 +74,6 @@ const translations: Record<AppLanguage, Record<string, string>> = {
     preview: "Preview",
     resize: "Resize the editor and preview panels",
     ready: "Ready",
-    restart: "Language saved. Close and reopen the app to apply it.",
     spellingError: "Possible spelling error: {word}",
     spellcheckFailed: "Spellcheck failed: {error}",
     spellcheckInitFailed: "Spellcheck initialization failed: {error}",
@@ -123,6 +121,9 @@ function applyLanguage(preference: LanguagePreference): void {
   document.documentElement.lang = currentLanguage;
   document.title = currentLanguage === "en" ? "LightNote" : "LightNote";
   document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
+    if (element === statusEl) {
+      return;
+    }
     const key = element.dataset.i18n;
     if (key) {
       element.textContent = translate(key);
@@ -148,7 +149,7 @@ async function initializeLanguage(): Promise<void> {
 async function saveLanguagePreference(preference: LanguagePreference): Promise<void> {
   try {
     await invoke("set_language_preference", { language: preference });
-    setStatus(translate("restart"));
+    applyLanguage(preference);
   } catch (error) {
     setStatus(String(error));
   }
