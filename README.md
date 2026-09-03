@@ -54,7 +54,7 @@ flowchart LR
 - 输入 `- `、`* ` 或 `1. ` 后继续输入，创建列表。
 - 输入 `> ` 后继续输入，创建引用。
 - 输入 `**文字**`、`*文字*`、`` `代码` `` 创建行内格式。
-- 输入 `$E = mc^2$` 创建行内公式；使用 ```math 围栏创建块级公式。
+- 输入 `$E = mc^2$` 创建行内公式；使用 `$$...$$` 包裹创建块级公式。
 
 ### 分栏模式
 
@@ -193,7 +193,9 @@ cargo build --manifest-path src-tauri/Cargo.toml --release
 .
 ├── src/
 │   ├── main.ts          # 编辑器、预览和文件操作
-│   └── styles.css       # 应用与编辑器样式
+│   ├── styles.css       # 应用与编辑器样式
+│   ├── types.d.ts       # 前端类型声明
+│   └── assets/          # 前端静态资源
 ├── src-tauri/
 │   ├── src/lib.rs       # Tauri 命令与文件操作
 │   ├── capabilities/    # 对话框权限
