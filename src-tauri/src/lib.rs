@@ -681,6 +681,7 @@ pub fn run() {
             let _ = app.emit("menu-action", event.id().as_ref());
         })
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             save_external_file,
             take_pending_launch_path,

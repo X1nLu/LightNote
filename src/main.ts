@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import MarkdownIt from "markdown-it";
 import markdownItKatex from "markdown-it-katex";
 import DOMPurify from "dompurify";
@@ -951,7 +952,26 @@ function focusEditorLine(lineNumber: number): void {
   editorView.focus();
 }
 
-function handlePreviewClick(event: MouseEvent): void {
+async function handlePreviewClick(event: MouseEvent): Promise<void> {
+  const target = event.target;
+  const link = target instanceof Element ? target.closest<HTMLAnchorElement>("a") : null;
+  const href = link?.getAttribute("href")?.trim();
+  if (link && !href?.startsWith("#")) {
+    event.preventDefault();
+    if (!href) {
+      return;
+    }
+    try {
+      const url = new URL(href);
+      if (["http:", "https:", "mailto:", "tel:"].includes(url.protocol)) {
+        await openUrl(url.toString());
+      }
+    } catch {
+      // Relative and malformed links must not navigate the application webview.
+    }
+    return;
+  }
+
   if (!isSplitMode()) {
     return;
   }
