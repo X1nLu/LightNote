@@ -1104,18 +1104,18 @@ async function applyOpenedExternalFile(opened: OpenedExternalFile): Promise<void
   }
 }
 
-async function consumePendingLaunchPath(): Promise<void> {
+async function loadPendingLaunchFile(): Promise<OpenedExternalFile | null> {
   try {
     const pendingPath = await invoke<string | null>("take_pending_launch_path");
     if (!pendingPath) {
-      return;
+      return null;
     }
-    const opened = await invoke<OpenedExternalFile>("open_external_file", {
+    return await invoke<OpenedExternalFile>("open_external_file", {
       path: pendingPath,
     });
-    await applyOpenedExternalFile(opened);
   } catch (error) {
     setStatus(translate("launchFailed", { error: String(error) }));
+    return null;
   }
 }
 
@@ -1200,15 +1200,15 @@ async function listenForMenuActions(): Promise<void> {
   });
 }
 
-async function initEditor(): Promise<void> {
-  const content = translate("initialText");
-  documentBaseDir = null;
-  documentPath = null;
-  documentReadOnly = false;
-  documentFingerprint = null;
+async function initEditor(initialFile: OpenedExternalFile | null = null): Promise<void> {
+  const content = initialFile?.content ?? translate("initialText");
+  documentBaseDir = initialFile?.baseDir ?? null;
+  documentPath = initialFile?.path ?? null;
+  documentReadOnly = initialFile?.readOnly ?? false;
+  documentFingerprint = initialFile?.fingerprint ?? null;
   autoSavePausedForConflict = false;
   setDirtyState(false);
-  persistDocumentBaseDir(null);
+  persistDocumentBaseDir(documentBaseDir);
 
   editorView = new EditorView({
     state: EditorState.create({
@@ -1219,7 +1219,7 @@ async function initEditor(): Promise<void> {
         spellingIssueField,
         EditorView.lineWrapping,
         themeCompartment.of(getEditorTheme()),
-        editableCompartment.of(EditorView.editable.of(true)),
+        editableCompartment.of(EditorView.editable.of(!documentReadOnly)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const latest = update.state.doc.toString();
@@ -1247,7 +1247,13 @@ async function initEditor(): Promise<void> {
   });
 
   await renderPreview(content);
-  setStatus(translate("newDocument"));
+  if (initialFile?.readOnly) {
+    setStatus(translate("readOnlyOpened", { path: initialFile.path }));
+  } else if (initialFile) {
+    setStatus(translate("opened", { path: initialFile.path }));
+  } else {
+    setStatus(translate("newDocument"));
+  }
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -1255,8 +1261,8 @@ window.addEventListener("DOMContentLoaded", () => {
   setDisplayMode("preview");
   void (async () => {
     await initializeLanguage();
-    await initEditor();
-    await consumePendingLaunchPath();
+    const initialFile = await loadPendingLaunchFile();
+    await initEditor(initialFile);
     await listenForCliFileOpenEvent();
     await listenForMenuActions();
     await initializeSpellchecker();
