@@ -1252,7 +1252,7 @@ async function initEditor(): Promise<void> {
 
 window.addEventListener("DOMContentLoaded", () => {
   applyTheme(themePreference, false);
-  setDisplayMode("editor");
+  setDisplayMode("preview");
   void (async () => {
     await initializeLanguage();
     await initEditor();
