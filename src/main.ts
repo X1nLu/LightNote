@@ -20,6 +20,7 @@ import {
   openSearchPanel,
 } from "@codemirror/search";
 import { Decoration, DecorationSet, EditorView, keymap } from "@codemirror/view";
+import { TabManager, type TabState } from "./tabs";
 import "katex/dist/katex.min.css";
 
 const appShellEl = document.querySelector(".app-shell") as HTMLElement;
@@ -28,6 +29,8 @@ const statusEl = document.querySelector("#save-status") as HTMLSpanElement;
 const editorRootEl = document.querySelector("#editor") as HTMLDivElement;
 const previewEl = document.querySelector("#preview") as HTMLDivElement;
 const splitDividerEl = document.querySelector("#split-divider") as HTMLDivElement;
+const tabBarEl = document.querySelector("#tab-bar") as HTMLElement;
+const tabNewButtonEl = document.querySelector("#tab-new") as HTMLButtonElement;
 
 type LanguagePreference = "system" | "zh-CN" | "en";
 type AppLanguage = Exclude<LanguagePreference, "system">;
@@ -58,6 +61,8 @@ const translations: Record<AppLanguage, Record<string, string>> = {
     conflictTitle: "文件冲突",
     cancelSave: "已取消保存，磁盘文件未被覆盖",
     fileSaveFailed: "文件保存失败: {error}",
+    closeDirtyTitle: "关闭未保存的标签",
+    closeDirtyMessage: "“{title}”有未保存的修改，确定丢弃并关闭？",
     readOnlyOpened: "已只读打开: {path}（源文件为只读）",
     opened: "已打开: {path}",
     launchFailed: "处理启动文件失败: {error}",
@@ -91,6 +96,8 @@ const translations: Record<AppLanguage, Record<string, string>> = {
     conflictTitle: "File conflict",
     cancelSave: "Save cancelled. The disk file was not overwritten.",
     fileSaveFailed: "Failed to save file: {error}",
+    closeDirtyTitle: "Close unsaved tab",
+    closeDirtyMessage: "“{title}” has unsaved changes. Discard and close?",
     readOnlyOpened: "Opened read-only: {path} (the source file is read-only)",
     opened: "Opened: {path}",
     launchFailed: "Failed to process startup file: {error}",
@@ -120,7 +127,9 @@ function translate(key: string, values: Record<string, string> = {}): string {
 function applyLanguage(preference: LanguagePreference): void {
   currentLanguage = resolveLanguage(preference);
   document.documentElement.lang = currentLanguage;
-  document.title = currentLanguage === "en" ? "LightNote" : "LightNote";
+  // 若有激活标签，其标题（含 dirty 标记）优先，避免丢失标签信息。
+  const active = tabManager.getActive();
+  document.title = active ? active.title : currentLanguage === "en" ? "LightNote" : "LightNote";
   document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
     if (element === statusEl) {
       return;
@@ -353,13 +362,7 @@ async function getMermaid() {
 let editorView: EditorView;
 let mermaidRenderId = 0;
 let previewRenderId = 0;
-let documentBaseDir: string | null = loadDocumentBaseDir();
-let documentPath: string | null = null;
-let documentReadOnly = false;
-let documentFingerprint: string | null = null;
-let autoSaveTimer: number | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
-let autoSavePausedForConflict = false;
 let spellcheckReady = false;
 let spellcheckTimer: number | null = null;
 let spellcheckRequestId = 0;
@@ -367,6 +370,33 @@ let previewObjectUrls: string[] = [];
 let splitRatio = loadSplitRatio();
 let activeSplitPointerId: number | null = null;
 let editorScrollAnimationFrame: number | null = null;
+/** 程序化载入文档（切标签/打开文件）时置位，抑制 docChanged 的 dirty/autosave 副作用。 */
+let suppressDocChanged = false;
+
+/** 标签管理器：每个文档一个 TabState，始终有一个激活标签。 */
+const tabManager = new TabManager();
+
+/** 返回当前激活标签（多标签模型下该值始终存在）。 */
+function getActiveTab(): TabState {
+  return tabManager.getActive() as TabState;
+}
+
+/** 当前语言下的「未命名」默认标签标题。 */
+function untitledTitle(): string {
+  return currentLanguage === "zh-CN" ? "未命名" : "Untitled";
+}
+
+/** 从文件路径提取标签标题（basename）。 */
+function titleFromPath(path: string): string {
+  return path.split(/[\\/]/).pop()?.trim() || untitledTitle();
+}
+
+/** 根据激活标签更新窗口标题。 */
+function updateWindowTitle(tab: TabState): void {
+  const base = currentLanguage === "en" ? "LightNote" : "LightNote";
+  const dirty = tab.dirty ? " •" : "";
+  document.title = `${tab.title}${dirty} - ${base}`;
+}
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
@@ -390,15 +420,6 @@ function persistSplitRatio(): void {
     window.localStorage.setItem(SPLIT_RATIO_STORAGE_KEY, String(splitRatio));
   } catch {
     return;
-  }
-}
-
-function loadDocumentBaseDir(): string | null {
-  try {
-    const baseDir = window.localStorage.getItem(DOCUMENT_BASE_DIR_STORAGE_KEY);
-    return baseDir?.trim() || null;
-  } catch {
-    return null;
   }
 }
 
@@ -593,26 +614,48 @@ function setStatus(message: string): void {
 }
 
 function setDirtyState(dirty: boolean): void {
-  void dirty;
+  const active = tabManager.getActive();
+  if (!active) {
+    return;
+  }
+  const changed = active.dirty !== dirty;
+  tabManager.updateTab(active.id, { dirty });
+  if (changed) {
+    updateWindowTitle(active);
+  }
 }
 
-function cancelPendingAutoSave(): void {
-  if (autoSaveTimer !== null) {
-    window.clearTimeout(autoSaveTimer);
-    autoSaveTimer = null;
+function cancelPendingAutoSave(tab?: TabState): void {
+  const target = tab ?? tabManager.getActive();
+  if (!target || target.autoSaveTimer === null) {
+    return;
   }
+  window.clearTimeout(target.autoSaveTimer);
+  tabManager.updateTab(target.id, { autoSaveTimer: null });
 }
 
 function queueAutoSave(): void {
-  cancelPendingAutoSave();
-  if (!documentPath || documentReadOnly || autoSavePausedForConflict) {
+  const active = tabManager.getActive();
+  if (!active) {
+    return;
+  }
+  cancelPendingAutoSave(active);
+  if (active.path === null || active.readOnly || active.conflictPaused) {
     return;
   }
 
-  autoSaveTimer = window.setTimeout(() => {
-    autoSaveTimer = null;
-    void saveCurrentDocument(true);
-  }, AUTO_SAVE_DELAY_MS);
+  tabManager.updateTab(active.id, {
+    autoSaveTimer: window.setTimeout(() => {
+      const stillActive = tabManager.getActive();
+      if (stillActive?.id === active.id) {
+        tabManager.updateTab(active.id, { autoSaveTimer: null });
+        void saveCurrentDocument(active, true);
+      } else {
+        // 切走后的定时器不再由该标签持有，直接清掉，避免误存。
+        tabManager.updateTab(active.id, { autoSaveTimer: null });
+      }
+    }, AUTO_SAVE_DELAY_MS),
+  });
 }
 
 function queueSpellcheck(): void {
@@ -678,21 +721,23 @@ function writeDocument(
   return operation.then(() => result as SavedExternalFile);
 }
 
-async function saveCurrentDocument(autoSave: boolean): Promise<void> {
-  const path = documentPath;
-  if (!path || documentReadOnly) {
+async function saveCurrentDocument(tab: TabState, autoSave: boolean): Promise<void> {
+  const path = tab.path;
+  if (!path || tab.readOnly) {
     return;
   }
 
-  const content = getEditorContent();
-  const expectedFingerprint = documentFingerprint;
+  const isActive = tabManager.getActive()?.id === tab.id;
+  const content = isActive ? getEditorContent() : tab.content;
+  const expectedFingerprint = tab.fingerprint;
   try {
     const saved = await writeDocument(path, content, expectedFingerprint, false);
-    if (documentPath !== path) {
+    if (tabManager.getActive()?.id !== tab.id) {
       return;
     }
-    documentFingerprint = saved.fingerprint;
-    if (getEditorContent() === content) {
+    tabManager.updateTab(tab.id, { fingerprint: saved.fingerprint });
+    const currentContent = getEditorContent();
+    if (currentContent === content) {
       setDirtyState(false);
       setStatus(translate(autoSave ? "autosaved" : "saved", { path }));
     } else {
@@ -700,7 +745,7 @@ async function saveCurrentDocument(autoSave: boolean): Promise<void> {
     }
   } catch (error) {
     if (String(error).includes(EXTERNAL_CHANGE_ERROR)) {
-      autoSavePausedForConflict = true;
+      tabManager.updateTab(tab.id, { conflictPaused: true });
       setStatus(translate("conflictPaused"));
       return;
     }
@@ -990,7 +1035,7 @@ async function renderPreview(content: string): Promise<void> {
   const html = renderMarkdownWithSourceRanges(content);
   const sanitizedHtml = DOMPurify.sanitize(html);
   previewEl.innerHTML = sanitizedHtml;
-  await loadLocalImages(previewEl, documentBaseDir, renderId);
+  await loadLocalImages(previewEl, getActiveTab().baseDir, renderId);
   if (renderId !== previewRenderId) {
     return;
   }
@@ -998,6 +1043,9 @@ async function renderPreview(content: string): Promise<void> {
 }
 
 function replaceEditorText(content: string): void {
+  // dispatch 是同步的：置位后再 dispatch，监听器在同步执行期间能看到该标志，
+  // 从而不把程序化载入当作「用户编辑」而标脏/触发自动保存。
+  suppressDocChanged = true;
   editorView.dispatch({
     changes: {
       from: 0,
@@ -1005,6 +1053,7 @@ function replaceEditorText(content: string): void {
       insert: content,
     },
   });
+  suppressDocChanged = false;
 }
 
 async function handleImportMarkdown(): Promise<void> {
@@ -1027,18 +1076,19 @@ async function handleImportMarkdown(): Promise<void> {
     const opened = await invoke<OpenedExternalFile>("open_external_file", {
       path: selected,
     });
-    await applyOpenedExternalFile(opened);
+    await openDocumentInTab(opened);
   } catch (error) {
     setStatus(translate("openFailed", { error: String(error) }));
   }
 }
 
 async function handleSaveFile(): Promise<void> {
+  const tab = getActiveTab();
   try {
-    cancelPendingAutoSave();
-    let path = documentPath;
-    let expectedFingerprint = documentFingerprint;
-    if (!path || documentReadOnly) {
+    cancelPendingAutoSave(tab);
+    let path = tab.path;
+    let expectedFingerprint = tab.fingerprint;
+    if (!path || tab.readOnly) {
       path = await save({
         defaultPath: path ?? "note.md",
         filters: [
@@ -1073,10 +1123,13 @@ async function handleSaveFile(): Promise<void> {
       }
       saved = await writeDocument(path, content, null, true);
     }
-    documentPath = path;
-    documentReadOnly = false;
-    documentFingerprint = saved.fingerprint;
-    autoSavePausedForConflict = false;
+    tabManager.updateTab(tab.id, {
+      path,
+      readOnly: false,
+      fingerprint: saved.fingerprint,
+      conflictPaused: false,
+      title: titleFromPath(path),
+    });
     setDirtyState(false);
     setEditorReadOnly(false);
     setStatus(translate("saved", { path }));
@@ -1085,23 +1138,177 @@ async function handleSaveFile(): Promise<void> {
   }
 }
 
-async function applyOpenedExternalFile(opened: OpenedExternalFile): Promise<void> {
-  cancelPendingAutoSave();
-  documentPath = opened.path;
-  documentReadOnly = opened.readOnly;
-  documentFingerprint = opened.fingerprint;
-  autoSavePausedForConflict = false;
-  documentBaseDir = opened.baseDir;
-  persistDocumentBaseDir(documentBaseDir);
-  replaceEditorText(opened.content);
-  setDirtyState(false);
-  setEditorReadOnly(opened.readOnly);
-  await renderPreview(opened.content);
+/** 把「激活标签」的文档载入编辑器视图（切标签、刚打开文件时通用）。 */
+function loadActiveTabIntoEditor(): void {
+  const tab = getActiveTab();
+  // 取消该标签上一次编辑可能遗留的待定自动保存。
+  cancelPendingAutoSave(tab);
+  // replaceEditorText 为程序化载入：由 suppressDocChanged 抑制 dirty/autosave 副作用，
+  // 预览渲染已由其 docChanged 触发，这里不重复渲染。
+  replaceEditorText(tab.content);
+  setEditorReadOnly(tab.readOnly);
+  setDirtyState(tab.dirty);
+  queueSpellcheck();
+}
+
+/** 打开外部文件：自动去重——已存在同路径标签则激活之，否则新建标签并载入。 */
+async function openDocumentInTab(opened: OpenedExternalFile): Promise<TabState> {
+  persistDocumentBaseDir(opened.baseDir);
+  // openPath 可能把活动标签切换走（去重激活已有标签，或新建标签），
+  // 先快照当前标签的未保存内容，避免丢失。
+  const current = tabManager.getActive();
+  if (current) {
+    snapshotCurrentEditor(current);
+  }
+  const tab = tabManager.openPath({
+    title: titleFromPath(opened.path),
+    path: opened.path,
+    baseDir: opened.baseDir,
+    readOnly: opened.readOnly,
+    fingerprint: opened.fingerprint,
+    content: opened.content,
+  });
+  loadActiveTabIntoEditor();
   if (opened.readOnly) {
     setStatus(translate("readOnlyOpened", { path: opened.path }));
   } else {
     setStatus(translate("opened", { path: opened.path }));
   }
+  return tab;
+}
+
+/** 重建标签栏里的标签元素（保留静态的「新建」按钮）。 */
+function renderTabBar(): void {
+  if (!tabBarEl) {
+    return;
+  }
+  tabBarEl.querySelectorAll(".tab").forEach((element) => element.remove());
+  const activeId = tabManager.getActive()?.id ?? -1;
+  const newButton = tabBarEl.querySelector<HTMLElement>("#tab-new");
+  const fragment = document.createDocumentFragment();
+  for (const tab of tabManager.getAll()) {
+    const tabEl = document.createElement("button");
+    tabEl.type = "button";
+    tabEl.className = "tab" + (tab.id === activeId ? " active" : "");
+    tabEl.dataset.tabId = String(tab.id);
+    tabEl.setAttribute("role", "tab");
+    tabEl.setAttribute("aria-selected", tab.id === activeId ? "true" : "false");
+
+    const titleEl = document.createElement("span");
+    titleEl.className = "tab-title";
+    titleEl.textContent = tab.title;
+    tabEl.appendChild(titleEl);
+
+    const closeEl = document.createElement("span");
+    closeEl.className = "tab-close";
+    closeEl.textContent = "×";
+    closeEl.dataset.closeFor = String(tab.id);
+    closeEl.setAttribute("aria-label", "关闭");
+    tabEl.appendChild(closeEl);
+
+    fragment.appendChild(tabEl);
+  }
+  if (newButton) {
+    tabBarEl.insertBefore(fragment, newButton);
+  } else {
+    tabBarEl.appendChild(fragment);
+  }
+}
+
+/** 把当前激活标签的编辑器文本/光标快照写回其 TabState。 */
+function snapshotCurrentEditor(tab: TabState): void {
+  if (!editorView) {
+    return;
+  }
+  const content = getEditorContent();
+  const head = editorView.state.selection.main.head;
+  const line = editorView.state.doc.lineAt(head);
+  tabManager.updateTab(tab.id, {
+    content,
+    savedCursor: { line: line.number, ch: head - line.from },
+  });
+  cancelPendingAutoSave(tab);
+}
+
+/** 恢复目标标签在快照中记录的光标位置并聚焦。 */
+function restoreTargetCursor(tab: TabState): void {
+  if (!editorView || !tab.savedCursor) {
+    return;
+  }
+  const { line, ch } = tab.savedCursor;
+  const maxLine = Math.max(1, editorView.state.doc.lines);
+  const docLine = editorView.state.doc.line(Math.min(line, maxLine));
+  const position = Math.min(docLine.from + ch, docLine.to);
+  editorView.dispatch({
+    selection: { anchor: position },
+    effects: EditorView.scrollIntoView(position),
+  });
+}
+
+/** 切换到指定标签：快照当前标签 → 激活目标 → 载入目标 → 恢复光标。 */
+function switchToTab(targetId: number): void {
+  const current = tabManager.getActive();
+  if (!current || current.id === targetId) {
+    return;
+  }
+  snapshotCurrentEditor(current);
+  tabManager.activate(targetId);
+  loadActiveTabIntoEditor();
+  restoreTargetCursor(getActiveTab());
+  editorView.focus();
+  queueSpellcheck();
+}
+
+/** 新建一个「未命名」标签并切换过去。 */
+function newTab(): void {
+  const current = tabManager.getActive();
+  if (current) {
+    snapshotCurrentEditor(current);
+  }
+  tabManager.openNew(untitledTitle(), "");
+  loadActiveTabIntoEditor();
+  setStatus(translate("newDocument"));
+  editorView.focus();
+}
+
+/** 关闭指定标签。若目标标签有未保存修改，先弹窗确认（丢弃/取消）。 */
+function closeTab(id: number): void {
+  const target = tabManager.getAll().find((tab) => tab.id === id);
+  if (!target) {
+    return;
+  }
+  const closingActive = tabManager.getActive()?.id === id;
+
+  void (async () => {
+    let proceed = true;
+    if (target.dirty) {
+      proceed = await confirm(
+        translate("closeDirtyMessage", { title: target.title }),
+        { title: translate("closeDirtyTitle"), kind: "warning" },
+      );
+    }
+    if (!proceed) {
+      return;
+    }
+    // 关闭的最后标签由 TabManager 的「保底未命名标签」规则兜底。
+    const closed = tabManager.close(id, untitledTitle(), "");
+    if (closingActive && closed !== null) {
+      loadActiveTabIntoEditor();
+      editorView.focus();
+    }
+  })();
+}
+
+/** 循环切换标签：delta = 1 下一个，-1 上一个。 */
+function cycleTabs(delta: number): void {
+  const tabs = tabManager.getAll();
+  if (tabs.length < 2) {
+    return;
+  }
+  const activeId = tabManager.getActive()?.id ?? -1;
+  const currentIndex = tabs.findIndex((tab) => tab.id === activeId);
+  const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
+  switchToTab(tabs[nextIndex].id);
 }
 
 async function loadPendingLaunchFile(): Promise<OpenedExternalFile | null> {
@@ -1125,7 +1332,7 @@ async function listenForCliFileOpenEvent(): Promise<void> {
       const opened = await invoke<OpenedExternalFile>("open_external_file", {
         path: event.payload,
       });
-      await applyOpenedExternalFile(opened);
+      await openDocumentInTab(opened);
     } catch (error) {
       setStatus(translate("contextOpenFailed", { error: String(error) }));
     }
@@ -1201,31 +1408,41 @@ async function listenForMenuActions(): Promise<void> {
 }
 
 async function initEditor(initialFile: OpenedExternalFile | null = null): Promise<void> {
-  const content = initialFile?.content ?? translate("initialText");
-  documentBaseDir = initialFile?.baseDir ?? null;
-  documentPath = initialFile?.path ?? null;
-  documentReadOnly = initialFile?.readOnly ?? false;
-  documentFingerprint = initialFile?.fingerprint ?? null;
-  autoSavePausedForConflict = false;
-  setDirtyState(false);
-  persistDocumentBaseDir(documentBaseDir);
+  if (initialFile) {
+    persistDocumentBaseDir(initialFile.baseDir);
+    tabManager.openPath({
+      title: titleFromPath(initialFile.path),
+      path: initialFile.path,
+      baseDir: initialFile.baseDir,
+      readOnly: initialFile.readOnly,
+      fingerprint: initialFile.fingerprint,
+      content: initialFile.content,
+    });
+  } else {
+    tabManager.openNew(untitledTitle(), "");
+  }
+  const active = getActiveTab();
 
   editorView = new EditorView({
     state: EditorState.create({
-      doc: content,
+      doc: active.content,
       extensions: [
         basicSetup,
         documentSearchKeymap,
         spellingIssueField,
         EditorView.lineWrapping,
         themeCompartment.of(getEditorTheme()),
-        editableCompartment.of(EditorView.editable.of(!documentReadOnly)),
+        editableCompartment.of(EditorView.editable.of(!active.readOnly)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const latest = update.state.doc.toString();
             void renderPreview(latest).then(() => {
               syncPreviewToEditor(update.view, getEditorTopVisibleLine(update.view));
             });
+            // 程序化载入（切标签/打开文件）不标脏、不排自动保存。
+            if (suppressDocChanged) {
+              return;
+            }
             setDirtyState(true);
             setStatus(translate("unsaved"));
             queueAutoSave();
@@ -1246,11 +1463,14 @@ async function initEditor(initialFile: OpenedExternalFile | null = null): Promis
     passive: true,
   });
 
-  await renderPreview(content);
-  if (initialFile?.readOnly) {
-    setStatus(translate("readOnlyOpened", { path: initialFile.path }));
-  } else if (initialFile) {
-    setStatus(translate("opened", { path: initialFile.path }));
+  updateWindowTitle(active);
+  await renderPreview(active.content);
+  if (active.path !== null) {
+    if (active.readOnly) {
+      setStatus(translate("readOnlyOpened", { path: active.path }));
+    } else {
+      setStatus(translate("opened", { path: active.path }));
+    }
   } else {
     setStatus(translate("newDocument"));
   }
@@ -1261,6 +1481,14 @@ window.addEventListener("DOMContentLoaded", () => {
   setDisplayMode("preview");
   void (async () => {
     await initializeLanguage();
+    // 订阅标签集合变化：重建标签栏 + 更新窗口标题。需在 initEditor 之前，
+    // 使首个标签创建即触发渲染。
+    tabManager.onDidChange((active) => {
+      renderTabBar();
+      if (active) {
+        updateWindowTitle(active);
+      }
+    });
     const initialFile = await loadPendingLaunchFile();
     await initEditor(initialFile);
     await listenForCliFileOpenEvent();
@@ -1269,6 +1497,25 @@ window.addEventListener("DOMContentLoaded", () => {
   })();
 
   previewEl.addEventListener("click", handlePreviewClick);
+
+  tabBarEl.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    const closeEl = target.closest<HTMLElement>(".tab-close");
+    if (closeEl) {
+      event.preventDefault();
+      event.stopPropagation();
+      const id = Number(closeEl.dataset.closeFor);
+      closeTab(id);
+      return;
+    }
+    const tabEl = target.closest<HTMLElement>(".tab");
+    if (tabEl && tabEl.dataset.tabId) {
+      switchToTab(Number(tabEl.dataset.tabId));
+    }
+  });
+  tabNewButtonEl.addEventListener("click", () => {
+    newTab();
+  });
 
   splitDividerEl.addEventListener("pointerdown", handleSplitPointerDown);
   document.addEventListener("pointermove", handleSplitPointerMove);
@@ -1302,5 +1549,25 @@ window.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
+      event.preventDefault();
+      newTab();
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "w") {
+      event.preventDefault();
+      const active = tabManager.getActive();
+      if (active) {
+        closeTab(active.id);
+      }
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key === "Tab") {
+      event.preventDefault();
+      cycleTabs(event.shiftKey ? -1 : 1);
+      return;
+    }
   });
 });

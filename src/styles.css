@@ -88,11 +88,95 @@ body {
 
 .topbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  padding: 6px 6px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  font-size: 0.85rem;
+  color: var(--subtle);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tab:hover {
+  color: var(--text);
+  background: var(--split-hover);
+}
+
+.tab.active {
+  color: var(--text);
+  background: var(--panel-bg);
+  border-color: var(--line);
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   padding: 0;
-  border-bottom: 0;
+  border: none;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  line-height: 1;
+  color: var(--subtle);
+  background: transparent;
+  cursor: pointer;
+}
+
+.tab-close:hover {
+  color: #fff;
+  background: #c2413b;
+}
+
+.tab-new {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--subtle);
+  background: transparent;
+  cursor: pointer;
+}
+
+.tab-new:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 button {
